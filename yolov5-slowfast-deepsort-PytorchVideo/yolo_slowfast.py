@@ -1,6 +1,6 @@
 import numpy as np
-import os,cv2,time,torch,random,pytorchvideo,warnings,argparse,math
-warnings.filterwarnings("ignore",category=UserWarning) # 忽略无关警告，避免输出杂乱
+import os, cv2, time, torch, random, pytorchvideo, warnings, argparse, math
+warnings.filterwarnings("ignore",category=UserWarning) # 忽略无关警告
 
 # PytorchVideo 相关的视频变换函数（核心用于SlowFast的输入预处理）
 from pytorchvideo.transforms.functional import (
@@ -12,10 +12,12 @@ from pytorchvideo.data.ava import AvaLabeledVideoFramePaths    # 加载AVA动作
 from pytorchvideo.models.hub import slowfast_r50_detection     # 加载SlowFast动作检测模型
 from deep_sort.deep_sort import DeepSort  # 导入DeepSort跟踪器
 
+# PyTorch 张量 → OpenCV 图像
 def tensor_to_numpy(tensor):
     img = tensor.cpu().numpy().transpose((1, 2, 0))  # (C,T,H,W) → (T,H,W,C)，适配OpenCV格式
     return img
 
+# SlowFast 输入预处理，如果换了新模型，可能需要调整预处理步骤（如输入尺寸、归一化参数等）
 def ava_inference_transform(clip, boxes,
     num_frames = 32,  # SlowFast的输入帧数（slow分支8帧+fast分支32帧）
     crop_size = 640,  # 图像裁剪尺寸
@@ -47,6 +49,7 @@ def ava_inference_transform(clip, boxes,
     
     return clip, torch.from_numpy(boxes), roi_boxes
 
+# 绘制检测框 + 标签
 def plot_one_box(x, img, color=[100,100,100], text_info="None",
                  velocity=None,thickness=1,fontsize=0.5,fontthickness=1):
     # x是检测框坐标 [x1,y1,x2,y2]，img是图像数组
@@ -61,11 +64,13 @@ def plot_one_box(x, img, color=[100,100,100], text_info="None",
                 cv2.FONT_HERSHEY_TRIPLEX, fontsize, [255,255,255], fontthickness)
     return img
 
+# 调用 DeepSort 更新跟踪 ID，换了新版本的 DeepSort 可能需要调整输入参数（如特征提取方式、距离度量等）
 def deepsort_update(Tracker,pred,xywh,np_img):
     # Tracker：DeepSort实例；pred：Yolov5检测结果；xywh：检测框的xywh格式；np_img：图像数组
     outputs = Tracker.update(xywh, pred[:,4:5],pred[:,5].tolist(),cv2.cvtColor(np_img,cv2.COLOR_BGR2RGB))
     return outputs
 
+# 绘制结果并写入视频
 def save_yolopreds_tovideo(yolo_preds,id_to_ava_labels,color_map,output_video):
     # yolo_preds：Yolov5+DeepSort的结果；id_to_ava_labels：ID到动作标签的映射；output_video：视频写入器
     for i, (im, pred) in enumerate(zip(yolo_preds.ims, yolo_preds.pred)):
@@ -88,6 +93,7 @@ def save_yolopreds_tovideo(yolo_preds,id_to_ava_labels,color_map,output_video):
 
 def main(config):
     # 1. 加载Yolov5l6模型（large版本，检测精度更高）
+    # 准备如果要换模型，需要调整加载方式（如本地权重文件、不同的模型架构等）
     model = torch.hub.load('ultralytics/yolov5', 'yolov5l6')
     model.conf = config.conf  # 检测置信度阈值（0.4）
     model.iou = config.iou    # NMS的IOU阈值（0.4）
@@ -101,6 +107,7 @@ def main(config):
     video_model = slowfast_r50_detection(True).eval().to(device)
     
     # 3. 初始化DeepSort跟踪器（加载预训练权重）
+    # 如果改为bytetrack或其他跟踪算法，需要调整跟踪器的初始化和更新方式
     deepsort_tracker = DeepSort("deep_sort/deep_sort/deep/checkpoint/ckpt.t7")
     
     # 4. 加载AVA动作标签映射（将模型输出的数字ID转为动作名称，如“走路”“跑步”）
