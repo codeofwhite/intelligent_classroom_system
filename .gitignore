@@ -22,3 +22,14 @@ yolov5-slowfast-deepsort-PytorchVideo/remake-yolov5-slowfast-deepsort-PytorchVid
 .DS_Store
 __pycache__/
 "@ | Out-File -FilePath .gitignore -Append -Encoding utf8
+
+@"
+# 忽略 slowfast 模型文件
+*.pyth
+# 忽略 yolov5/yolov8 模型文件
+*.pt
+*.pth
+# 忽略指定超大文件所在文件夹
+remake-yolov5-slowfast-deepsort-PytorchVideo/slowfast_file/
+remake-yolov5-slowfast-deepsort-PytorchVideo/yolov5_file/
+"@ | Out-File -FilePath .gitignore -Append -Encoding utf8
