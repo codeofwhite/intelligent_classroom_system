@@ -1,5 +1,24 @@
-yolov5-slowfast-deepsort-PytorchVideo\deep_sort\deep_sort\deep\checkpoint\ckpt.t7
-yolov5-slowfast-deepsort-PytorchVideo\yolov8n.pt
-yolov5-slowfast-deepsort-PytorchVideo\yolov5l6.pt
-yolov5-slowfast-deepsort-PytorchVideo\remake-yolov5-slowfast-deepsort-PytorchVideo
-yolov5-slowfast-deepsort-PytorchVideo\output.mp4
+@"
+# 忽略视频文件（包含你那个 output.mp4）
+*.mp4
+*.avi
+*.mov
+
+# 忽略模型文件（.pt 是 PyTorch 模型，体积超大）
+*.pt
+*.pth
+
+# 忽略模型导出文件
+*.bin
+*.xml
+*.onnx
+
+# 忽略指定大文件夹
+yolov5-slowfast-deepsort-PytorchVideo/deep_sort/deep_sort/deep/checkpoint/
+yolov5-slowfast-deepsort-PytorchVideo/demo/
+yolov5-slowfast-deepsort-PytorchVideo/remake-yolov5-slowfast-deepsort-PytorchVideo/
+
+# 忽略系统隐藏文件
+.DS_Store
+__pycache__/
+"@ | Out-File -FilePath .gitignore -Append -Encoding utf8
