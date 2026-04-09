@@ -12,11 +12,8 @@
 </template>
 
 <script setup>
-// 定义可以发出的事件
 const emit = defineEmits(['login-success'])
-
 const emitLogin = (role) => {
-  // 告诉父组件 App.vue，“有人登录了，角色是XXX”
   emit('login-success', role)
 }
 </script>
@@ -26,26 +23,44 @@ const emitLogin = (role) => {
   display: flex;
   justify-content: center;
   align-items: center;
-  height: 80vh;
+  height: 100vh;
+  background: linear-gradient(to bottom right, #eef5ff, #d4e7ff);
 }
 .login-box {
   background: white;
-  padding: 40px;
-  border-radius: 20px;
+  padding: 50px 40px;
+  border-radius: 24px;
   text-align: center;
-  box-shadow: 0 10px 25px rgba(0,0,0,0.1);
+  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
+  width: 340px;
+}
+.login-box h2 {
+  margin: 0 0 8px;
+  font-size: 22px;
+}
+.login-box p {
+  margin: 0 0 30px;
+  color: #666;
+  font-size: 14px;
 }
 .role-selector {
   display: flex;
-  gap: 20px;
-  margin-top: 30px;
+  gap: 16px;
+  justify-content: center;
 }
 button {
-  padding: 12px 24px;
+  padding: 14px 28px;
   border: none;
-  border-radius: 8px;
+  border-radius: 12px;
   cursor: pointer;
   background: #4a90e2;
   color: white;
+  font-size: 15px;
+  transition: 0.2s;
+  flex: 1;
+}
+button:hover {
+  background: #357abd;
+  transform: translateY(-2px);
 }
 </style>

@@ -40,7 +40,7 @@ const handleLogout = () => {
           <span class="role-tag">{{ userRole === 'student' ? '学生' : '家长' }}</span>
           <span>{{ userName }}</span>
         </div>
-        <button @click="handleLogout" class="logout-btn">退出</button>
+        <button @click="handleLogout" class="logout-btn">退出登录</button>
       </div>
     </nav>
 
@@ -51,29 +51,17 @@ const handleLogout = () => {
 </template>
 
 <style>
-.nav-links a {
-  text-decoration: none;
-  color: #666;
-  font-weight: 500;
-  padding: 5px 10px;
-  border-radius: 4px;
-}
-
-.router-link-active {
-  color: #4a90e2 !important;
-  background-color: #f0f7ff;
-}
-
-.content {
-  padding: 20px;
-  max-width: 1200px;
-  margin: 0 auto;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
 }
 
 body {
-  margin: 0;
   font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif;
-  background-color: #f5f7fa;
+  background-color: #f7fcff;
+  color: #333;
+  line-height: 1.5;
 }
 
 #app {
@@ -82,15 +70,15 @@ body {
   min-height: 100vh;
 }
 
-/* 导航栏样式 */
+/* 导航栏 */
 .main-navbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 0 40px;
-  height: 70px;
-  background-color: #ffffff;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  padding: 0 30px;
+  height: 65px;
+  background: #ffffff;
+  box-shadow: 0 2px 12px rgba(74, 144, 226, 0.06);
   position: sticky;
   top: 0;
   z-index: 100;
@@ -99,11 +87,11 @@ body {
 .nav-left {
   display: flex;
   align-items: center;
-  gap: 40px;
+  gap: 36px;
 }
 
 .logo {
-  font-size: 24px;
+  font-size: 22px;
   font-weight: bold;
   color: #4a90e2;
   display: flex;
@@ -114,35 +102,42 @@ body {
 .nav-links {
   display: flex;
   list-style: none;
-  gap: 25px;
-  margin: 0;
-  padding: 0;
+  gap: 24px;
 }
 
-.nav-links li {
-  cursor: pointer;
-  color: #666;
+.nav-links a {
+  text-decoration: none;
+  color: #555;
   font-weight: 500;
-  transition: color 0.3s;
+  padding: 8px 12px;
+  border-radius: 8px;
+  transition: all 0.25s ease;
 }
 
-.nav-links li:hover, .nav-links li.active {
+.nav-links a:hover {
   color: #4a90e2;
+  background: #f0f7ff;
+}
+
+.router-link-active {
+  color: #4a90e2 !important;
+  background-color: #e8f3ff !important;
 }
 
 .nav-right {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 16px;
 }
 
-/* 身份标签样式 */
+/* 身份卡片 */
 .user-badge {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 5px 15px;
-  border-radius: 20px;
+  gap: 8px;
+  padding: 6px 14px;
+  border-radius: 30px;
+  font-size: 14px;
 }
 
 .user-badge.student {
@@ -157,24 +152,32 @@ body {
 
 .role-tag {
   font-size: 12px;
-  background: rgba(255,255,255,0.5);
+  background: rgba(255, 255, 255, 0.6);
   padding: 2px 6px;
   border-radius: 4px;
 }
 
+/* 退出按钮 */
 .logout-btn {
-  background: none;
-  border: 1px solid #ddd;
-  padding: 5px 12px;
-  border-radius: 6px;
+  border: none;
+  padding: 8px 14px;
+  border-radius: 10px;
   cursor: pointer;
-  color: #888;
+  font-size: 13px;
+  background: #ff6b6b;
+  color: #fff;
+  transition: 0.2s;
+}
+.logout-btn:hover {
+  background: #ff5252;
 }
 
+/* 内容区域 */
 .content {
   flex: 1;
   width: 100%;
-  max-width: 1200px; /* 居中显示，防止在大屏下太散 */
+  max-width: 1100px;
   margin: 0 auto;
+  padding: 24px 20px;
 }
 </style>

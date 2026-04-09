@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  minio:
+    image: minio/minio
+    container_name: minio_server
+    ports:
+      - "9000:9000"    # API 端口
+      - "9001:9001"    # 控制台端口 (Web 管理界面)
+    environment:
+      MINIO_ROOT_USER: admin
+      MINIO_ROOT_PASSWORD: password123  # 建议修改
+    volumes:
+      - minio_data:/data
+    command: server /data --console-address ":9001"
+
+volumes:
+  minio_data:
