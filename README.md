@@ -25,3 +25,9 @@
 | **其他** | Docker |
 
 ---
+
+转 openvino 命令
+- yolov8 以上直接过
+```bash
+yolo export model=yolov8n.pt format=openvino imgsz=640
+```
