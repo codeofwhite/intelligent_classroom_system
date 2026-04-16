@@ -2,65 +2,111 @@
   <div class="login-container">
     <div class="login-box">
       <h2>🔑 欢迎回来</h2>
-      <p>请选择身份进入智能课堂</p>
-      <div class="role-selector">
-        <button @click="emitLogin('student')">我是学生</button>
-        <button @click="emitLogin('parent')">我是家长</button>
+      <p>请选择身份并登录</p>
+
+      <div class="role-tabs">
+        <div 
+          :class="['tab', loginForm.role === 'student' ? 'active' : '']" 
+          @click="loginForm.role = 'student'"
+        >我是学生</div>
+        <div 
+          :class="['tab', loginForm.role === 'parent' ? 'active' : '']" 
+          @click="loginForm.role = 'parent'"
+        >我是家长</div>
+      </div>
+
+      <div class="form-area">
+        <input type="text" v-model="loginForm.username" placeholder="请输入姓名" />
+        <input type="password" v-model="loginForm.password" placeholder="请输入密码" />
+        <button class="login-btn" @click="handleLogin">立即登录</button>
       </div>
     </div>
   </div>
 </template>
 
 <script setup>
-const emit = defineEmits(['login-success'])
-const emitLogin = (role) => {
-  emit('login-success', role)
+import { reactive } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+
+const loginForm = reactive({
+  username: '',
+  password: '',
+  role: 'student' // 默认学生
+})
+
+const handleLogin = async () => {
+  if (!loginForm.username || !loginForm.password) {
+    alert('请填写完整信息')
+    return
+  }
+
+  try {
+    const response = await fetch('http://localhost:5001/login', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(loginForm)
+    })
+
+    const result = await response.json()
+
+    if (result.status === 'success') {
+      localStorage.setItem('currentUser', JSON.stringify(result.user))
+      localStorage.setItem('currentRelations', JSON.stringify(result.relations || []))
+      router.push('/')
+    } else {
+      alert(result.message)
+    }
+  } catch (error) {
+    alert('后端服务未启动或网络异常')
+  }
 }
 </script>
 
 <style scoped>
-.login-container {
+.role-tabs {
   display: flex;
-  justify-content: center;
-  align-items: center;
-  height: 100vh;
-  background: linear-gradient(to bottom right, #eef5ff, #d4e7ff);
+  background: #f0f2f5;
+  border-radius: 12px;
+  padding: 4px;
+  margin-bottom: 24px;
 }
-.login-box {
-  background: white;
-  padding: 50px 40px;
-  border-radius: 24px;
-  text-align: center;
-  box-shadow: 0 15px 35px rgba(0, 0, 0, 0.08);
-  width: 340px;
-}
-.login-box h2 {
-  margin: 0 0 8px;
-  font-size: 22px;
-}
-.login-box p {
-  margin: 0 0 30px;
-  color: #666;
+.tab {
+  flex: 1;
+  padding: 10px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: 0.3s;
   font-size: 14px;
 }
-.role-selector {
-  display: flex;
-  gap: 16px;
-  justify-content: center;
+.tab.active {
+  background: white;
+  color: #4a90e2;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.05);
 }
-button {
-  padding: 14px 28px;
-  border: none;
-  border-radius: 12px;
-  cursor: pointer;
+.form-area {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+input {
+  padding: 14px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  outline: none;
+}
+input:focus {
+  border-color: #4a90e2;
+}
+.login-btn {
   background: #4a90e2;
   color: white;
-  font-size: 15px;
-  transition: 0.2s;
-  flex: 1;
+  padding: 14px;
+  border: none;
+  border-radius: 10px;
+  cursor: pointer;
+  font-weight: bold;
 }
-button:hover {
-  background: #357abd;
-  transform: translateY(-2px);
-}
+/* ... 之前的 login-container 样式 ... */
 </style>

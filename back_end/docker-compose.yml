@@ -14,5 +14,29 @@ services:
       - minio_data:/data
     command: server /data --console-address ":9001"
 
+  # 数据库服务
+  user-db:
+    image: mysql:8.0
+    container_name: user-mysql
+    environment:
+      MYSQL_DATABASE: user_center_db
+      MYSQL_ROOT_PASSWORD: password123
+    ports:
+      - "3306:3306"
+
+  # 用户中心服务
+  user-center-service:
+    build: ./user-center-service
+    container_name: user-center-app
+    ports:
+      - "5001:5001" # 建议把不同服务的对外端口错开，比如 5001
+    depends_on:
+      - user-db
+    environment:
+      DB_HOST: user-db
+      DB_USER: root
+      DB_PASSWORD: password123
+      DB_NAME: user_center_db
+
 volumes:
   minio_data:

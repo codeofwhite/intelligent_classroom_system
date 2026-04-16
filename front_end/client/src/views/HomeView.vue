@@ -2,235 +2,168 @@
   <div class="home-view">
     <header class="welcome-section">
       <div class="user-info">
-        <div class="avatar">🌟</div>
-        <div class="text">
-          <h2>早安，小探险家！</h2>
-          <p>今天也是充满进步的一天，加油！</p>
+        <!-- 头像 + 下拉菜单 -->
+        <div class="avatar-container" @click="showMenu = !showMenu">
+          <div class="avatar">🌟</div>
+          <div v-if="showMenu" class="dropdown-menu">
+            <button @click="handleLogout">退出登录</button>
+          </div>
         </div>
-      </div>
-      <div class="stats-badge">
-        <span>已连续学习 <strong>5</strong> 天</span>
+        
+        <!-- 欢迎文字 + 身份信息 -->
+        <div class="text">
+          <h2>早安，{{ user.username }}！</h2>
+          <p v-if="relations.length > 0" class="relation-tag">
+            身份：{{ user.role === 'parent' ? '家长' : '老师' }} 
+            (关联学生: {{ relations.map(r => r.username).join(', ') }})
+          </p>
+          <p v-else class="welcome-desc">今天也是充满进步的一天，加油！</p>
+        </div>
       </div>
     </header>
-
-    <section class="main-actions">
-      <div class="action-card primary">
-        <div class="icon">🚀</div>
-        <h3>进入直播课堂</h3>
-        <p>王老师的数学课正在进行中...</p>
-      </div>
-      <div class="action-card secondary">
-        <div class="icon">📚</div>
-        <h3>我的课程表</h3>
-        <p>查看本周安排</p>
-      </div>
-    </section>
-
-    <section class="learning-progress">
-      <div class="section-header">
-        <h3>今日学习任务</h3>
-        <span class="more">查看全部 ></span>
-      </div>
-      <div class="task-list">
-        <div class="task-item completed">
-          <input type="checkbox" checked disabled>
-          <span>[语文] 朗读课文《秋天》</span>
-          <span class="status">已完成</span>
-        </div>
-        <div class="task-item">
-          <input type="checkbox">
-          <span>[数学] 完成分数运算练习题</span>
-          <span class="status">待做</span>
-        </div>
-      </div>
-    </section>
-
-    <section class="honor-roll">
-      <div class="honor-card">
-        <p>获得的星钻：💎 120</p>
-        <div class="progress-bar-container">
-          <div class="progress-bar" style="width: 70%"></div>
-        </div>
-        <small>再攒 30 颗星钻即可兑换新挂件！</small>
-      </div>
-    </section>
   </div>
 </template>
 
+<script setup>
+import { ref, onMounted } from 'vue'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
+const user = ref({})
+const relations = ref([])
+const showMenu = ref(false)
+
+onMounted(() => {
+  const savedUser = localStorage.getItem('currentUser')
+  const savedRelations = localStorage.getItem('currentRelations')
+  
+  if (!savedUser) {
+    router.push('/login')
+    return
+  }
+  
+  user.value = JSON.parse(savedUser)
+  relations.value = JSON.parse(savedRelations || '[]')
+})
+
+// 登出
+const handleLogout = () => {
+  localStorage.removeItem('currentUser')
+  localStorage.removeItem('currentRelations')
+  router.push('/login')
+}
+</script>
+
 <style scoped>
+/* 整体页面 */
 .home-view {
-  padding: 0;
-  color: #333;
-  min-height: 100%;
+  width: 100%;
+  min-height: 100vh;
+  background-color: #f7f9fc;
 }
 
+/* 头部欢迎栏 */
 .welcome-section {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  background: #fff;
-  padding: 20px 24px;
-  border-radius: 16px;
-  margin-bottom: 20px;
-  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.04);
+  width: 100%;
+  padding: 24px 20px;
+  background: linear-gradient(135deg, #4e8cff, #64b5f6);
+  color: white;
+  box-sizing: border-box;
+  box-shadow: 0 2px 10px rgba(78, 140, 255, 0.15);
 }
 
+/* 用户信息布局：横向排列 */
 .user-info {
+  max-width: 1200px;
+  margin: 0 auto;
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 16px;
 }
 
+/* 头像容器 */
+.avatar-container {
+  position: relative;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+/* 头像样式 */
 .avatar {
-  font-size: 30px;
   width: 50px;
   height: 50px;
-  background: #f0f7ff;
   border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
   display: flex;
   align-items: center;
   justify-content: center;
+  font-size: 22px;
+  backdrop-filter: blur(10px);
+  transition: transform 0.2s ease;
 }
 
-.user-info h2 {
-  margin: 0 0 4px;
-  font-size: 18px;
+.avatar:hover {
+  transform: scale(1.05);
 }
 
-.user-info p {
-  margin: 0;
-  font-size: 13px;
-  color: #666;
-}
-
-.stats-badge {
-  font-size: 14px;
-  color: #4a90e2;
-  background: #e8f3ff;
-  padding: 8px 14px;
-  border-radius: 30px;
-}
-
-.main-actions {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-  margin-bottom: 26px;
-}
-
-.action-card {
-  border-radius: 16px;
-  padding: 22px 24px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  transition: transform 0.2s;
-}
-
-.action-card:hover {
-  transform: translateY(-2px);
-}
-
-.action-card.primary {
-  background: linear-gradient(135deg, #6ebdfa, #4a90e2);
-  color: white;
-}
-
-.action-card.secondary {
-  background: white;
-  border: 1px solid #e8f3ff;
-}
-
-.action-card .icon {
-  font-size: 26px;
-  margin-bottom: 10px;
-}
-
-.action-card h3 {
-  margin: 0 0 6px;
-  font-size: 16px;
-}
-
-.action-card p {
-  margin: 0;
-  font-size: 13px;
-  opacity: 0.9;
-}
-
-.learning-progress {
-  margin-bottom: 26px;
-}
-
-.section-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 14px;
-}
-
-.section-header h3 {
-  margin: 0;
-  font-size: 16px;
-}
-
-.more {
-  font-size: 13px;
-  color: #4a90e2;
-  cursor: pointer;
-}
-
-.task-item {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: white;
-  padding: 16px;
-  border-radius: 12px;
-  margin-bottom: 10px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-
-.task-item.completed {
-  background: #f0fff4;
-}
-
-.status {
-  margin-left: auto;
-  font-size: 12px;
-  color: #888;
-}
-
-.completed .status {
-  color: #28a745;
-}
-
-.honor-card {
-  background: white;
-  padding: 22px;
-  border-radius: 16px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-}
-
-.honor-card p {
-  margin: 0 0 12px;
-  font-weight: 500;
-}
-
-.progress-bar-container {
-  width: 100%;
-  height: 8px;
-  background: #f0f0f0;
+/* 下拉菜单 */
+.dropdown-menu {
+  position: absolute;
+  top: 55px;
+  left: 0;
+  background: #ffffff;
+  border: 1px solid #f0f0f0;
   border-radius: 10px;
+  box-shadow: 0 6px 20px rgba(0, 0, 0, 0.1);
+  z-index: 100;
   overflow: hidden;
-  margin-bottom: 8px;
+  min-width: 110px;
 }
 
-.progress-bar {
-  height: 100%;
-  background: linear-gradient(to right, #ffd43b, #ffb100);
-  border-radius: 10px;
+.dropdown-menu button {
+  width: 100%;
+  padding: 11px 18px;
+  border: none;
+  background: none;
+  color: #ff4d4f;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+  transition: background 0.2s;
 }
 
-.honor-card small {
-  color: #888;
-  font-size: 12px;
+.dropdown-menu button:hover {
+  background-color: #fff5f5;
+}
+
+/* 文字区域 */
+.text {
+  flex: 1;
+  line-height: 1.4;
+}
+
+.text h2 {
+  margin: 0 0 6px 0;
+  font-size: 20px;
+  font-weight: 600;
+}
+
+/* 身份标签 */
+.relation-tag {
+  margin: 0;
+  font-size: 13px;
+  color: #3079ed;
+  background: rgba(255, 255, 255, 0.85);
+  padding: 4px 10px;
+  border-radius: 12px;
+  display: inline-block;
+  backdrop-filter: blur(4px);
+}
+
+/* 温馨提示文字 */
+.welcome-desc {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.95;
 }
 </style>
