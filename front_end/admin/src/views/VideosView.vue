@@ -1,195 +1,231 @@
 <template>
-  <div class="monitor-container">
-
-    <div class="section model-selector">
-      <h3>模型配置</h3>
-      <div class="controls">
-        <label>当前推理模型：</label>
-        <select v-model="selectedModel" @change="changeModel">
-          <option v-for="m in modelOptions" :key="m" :value="m">{{ m }}</option>
-        </select>
-        <span v-if="switching" class="loading-text">正在加载模型...</span>
-      </div>
+  <div class="video-analysis-page">
+    <div class="header">
+      <h2>🎓 课堂行为视频分析系统</h2>
+      <p>上传视频进行行为分析，查看历史分析记录</p>
     </div>
 
-    <div class="section live-section">
-      <h3>实时监控画面 (AI 模式)</h3>
-      <div class="video-window">
-        <img src="http://localhost:5000/video_feed" alt="视频流加载中..." class="live-stream" />
-      </div>
-      <div class="status-panel">
-        <p>状态：<span style="color: green">● 正在实时分析</span></p>
-      </div>
-    </div>
-
-    <hr class="divider" />
-
-    <div class="section upload-section">
-      <h3>离线视频分析 (上传文件)</h3>
-      <div class="upload-card">
-        <input type="file" ref="videoInput" @change="onFileChange" accept="video/*" />
-        <button @click="startAnalysis" :disabled="loading" class="upload-btn">
-          {{ loading ? 'AI 正在分析帧...' : '上传并分析视频' }}
+    <!-- 上传分析 -->
+    <div class="card">
+      <h3>📂 上传视频进行分析</h3>
+      <div class="upload-area">
+        <input
+          type="file"
+          ref="videoInput"
+          @change="onFileChange"
+          accept="video/*"
+        />
+        <button @click="startAnalysis" :disabled="loading" class="btn-primary">
+          {{ loading ? "AI 分析中..." : "开始上传并分析" }}
         </button>
       </div>
 
-      <div v-if="resultUrl" class="result-display">
-        <h4>分析结果回放：</h4>
+      <!-- 结果回放 -->
+      <div v-if="resultUrl" class="result-section">
+        <h4>✅ 分析完成</h4>
         <video :src="resultUrl" controls class="result-video"></video>
-        <p class="hint">文件已同步存储至 Docker MinIO 容器</p>
+        <p class="tip">文件已自动保存至云端存储</p>
       </div>
     </div>
 
-    <div class="history-section">
-
-      <h3>历史分析记录 <button @click="fetchVideoList" class="refresh-btn">刷新列表</button></h3>
+    <!-- 历史记录 -->
+    <div class="card">
+      <div class="history-header">
+        <h3>📜 历史分析记录</h3>
+        <button @click="fetchVideoList" class="btn-outline">刷新</button>
+      </div>
 
       <div class="video-grid">
-        <div v-for="video in videoList" :key="video.name" class="video-item">
-          <p class="video-date">{{ video.time }}</p>
-          <video :src="video.url" controls width="300"></video>
-          <p class="video-name">{{ video.name }}</p>
+        <div v-for="video in videoList" :key="video.name" class="video-card">
+          <p class="time">{{ video.time }}</p>
+          <video :src="video.url" controls></video>
+          <p class="name">{{ video.name }}</p>
+        </div>
+        <div v-if="videoList.length === 0" class="empty">
+          暂无历史记录
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script>
-import axios from 'axios';
+<script setup>
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
 
-export default {
-  data() {
-    return {
-      videoFile: null,
-      loading: false,
-      resultUrl: '',
-      videoList: [],
-      modelOptions: [],
-      selectedModel: '',
-      switching: false
-    };
-  },
-  mounted() {
-    this.fetchModels(); // 页面加载时获取模型列表
-    this.fetchVideoList(); // 页面加载时自动获取一次
-  },
-  methods: {
-    async fetchModels() {
-      try {
-        const res = await axios.get('http://localhost:5000/get_models');
-        this.modelOptions = res.data.models;
-        this.selectedModel = res.data.current;
-      } catch (err) {
-        console.error("无法获取模型列表");
-      }
-    },
-    async changeModel() {
-      this.switching = true;
-      try {
-        await axios.post('http://localhost:5000/switch_model', {
-          model_name: this.selectedModel
-        });
-        alert("模型切换成功！实时流和分析将使用新模型。");
-      } catch (err) {
-        alert("模型切换失败：" + err.response.data.msg);
-      } finally {
-        this.switching = false;
-      }
-    },
-    async fetchVideoList() {
-      try {
-        const res = await axios.get('http://localhost:5000/list_videos');
-        this.videoList = res.data;
-      } catch (err) {
-        console.error("获取列表失败", err);
-      }
-    },
-    onFileChange(e) {
-      this.videoFile = e.target.files[0];
-    },
-    async startAnalysis() {
-      if (!this.videoFile) return alert("请选择视频");
+const videoInput = ref(null)
+const videoFile = ref(null)
+const loading = ref(false)
+const resultUrl = ref('')
+const videoList = ref([])
 
-      this.loading = true;
-      const formData = new FormData();
-      formData.append('video', this.videoFile);
+// 选择文件
+function onFileChange(e) {
+  videoFile.value = e.target.files[0]
+}
 
-      try {
-        // 注意：这里确保指向你的 Flask 后端地址
-        const res = await axios.post('http://localhost:5000/upload_video', formData);
-        this.resultUrl = res.data.video_url;
-      } catch (err) {
-        console.error(err);
-        alert("分析失败，请检查后端和 MinIO 状态");
-      } finally {
-        this.loading = false;
-      }
-    }
+// 上传并分析
+async function startAnalysis() {
+  if (!videoFile.value) {
+    alert('请选择视频')
+    return
+  }
+
+  loading.value = true
+  const formData = new FormData()
+  formData.append('video', videoFile.value)
+
+  try {
+    const res = await axios.post('http://localhost:5000/upload_video', formData)
+    resultUrl.value = res.data.video_url
+  } catch (err) {
+    alert('分析失败，请检查后端服务')
+  } finally {
+    loading.value = false
   }
 }
+
+// 获取历史列表
+async function fetchVideoList() {
+  try {
+    const res = await axios.get('http://localhost:5000/list_videos')
+    videoList.value = res.data
+  } catch (err) {
+    console.error('获取失败')
+  }
+}
+
+onMounted(() => {
+  fetchVideoList()
+})
 </script>
 
 <style scoped>
-.monitor-container {
-  max-width: 800px;
+.video-analysis-page {
+  max-width: 1000px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 30px 20px;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: #f7f9fc;
+  min-height: 100vh;
 }
 
-.section {
+.header {
+  text-align: center;
+  margin-bottom: 40px;
+}
+.header h2 {
+  font-size: 24px;
+  color: #222;
+  margin-bottom: 8px;
+}
+.header p {
+  color: #666;
+  font-size: 15px;
+}
+
+.card {
+  background: #fff;
+  border-radius: 16px;
+  padding: 24px;
   margin-bottom: 30px;
-  padding: 15px;
-  border: 1px solid #eee;
-  border-radius: 12px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+}
+.card h3 {
+  margin-top: 0;
+  font-size: 18px;
+  color: #333;
+  margin-bottom: 18px;
 }
 
-.model-selector { background: #f9f9f9; border-left: 5px solid #42b983; }
-.controls { display: flex; align-items: center; gap: 10px; margin-top: 10px; }
-.loading-text { color: #666; font-size: 13px; font-style: italic; }
-select { padding: 5px 10px; border-radius: 4px; border: 1px solid #ccc; }
+.upload-area {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+}
 
-.live-stream {
-  width: 100%;
+input[type="file"] {
+  padding: 6px;
+  font-size: 14px;
+}
+
+.btn-primary {
+  background: #42b983;
+  color: white;
+  border: none;
+  padding: 10px 18px;
   border-radius: 8px;
-  background: #000;
-  min-height: 300px;
+  cursor: pointer;
+  font-size: 14px;
+}
+.btn-primary:disabled {
+  background: #a0d9bc;
+  cursor: not-allowed;
 }
 
+.result-section {
+  margin-top: 24px;
+}
 .result-video {
   width: 100%;
-  border-radius: 8px;
-  margin-top: 10px;
+  border-radius: 10px;
+  background: #000;
+}
+.tip {
+  font-size: 13px;
+  color: #888;
+  margin-top: 8px;
 }
 
-.divider {
-  margin: 40px 0;
-  border: 0;
-  border-top: 1px dashed #ccc;
+.history-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
-.upload-btn {
-  margin-top: 10px;
-  padding: 8px 16px;
+.btn-outline {
+  border: 1px solid #42b983;
+  color: #42b983;
+  background: white;
+  padding: 6px 12px;
+  border-radius: 6px;
   cursor: pointer;
-}
-
-.hint {
-  font-size: 12px;
-  color: #666;
+  font-size: 14px;
 }
 
 .video-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
-  margin-top: 20px;
+  margin-top: 16px;
 }
-.video-item {
-  border: 1px solid #ddd;
-  padding: 10px;
+
+.video-card {
+  border: 1px solid #eee;
+  border-radius: 12px;
+  padding: 12px;
+}
+.video-card video {
+  width: 100%;
   border-radius: 8px;
+  background: #000;
 }
-.video-date { font-size: 12px; color: #888; }
-.refresh-btn { font-size: 14px; margin-left: 10px; cursor: pointer; }
+.video-card .time {
+  font-size: 12px;
+  color: #999;
+  margin: 0 0 6px 0;
+}
+.video-card .name {
+  font-size: 14px;
+  color: #333;
+  margin: 6px 0 0 0;
+}
+
+.empty {
+  color: #999;
+  grid-column: 1 / -1;
+  text-align: center;
+  padding: 30px 0;
+}
 </style>
