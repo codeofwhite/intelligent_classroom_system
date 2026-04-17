@@ -135,4 +135,4 @@ def save_and_analyze(data):
 
 if __name__ == "__main__":
     # 请根据实际路径修改
-    main(video_path="demo/test_adult.mp4", weight_path="yolov7_epoch42.pt", output_path="result.mp4")
+    main(video_path="demo/579977249-1-208 - Trim.mp4", weight_path="yolov7_epoch42.pt", output_path="result.mp4")

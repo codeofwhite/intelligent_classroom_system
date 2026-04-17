@@ -231,7 +231,7 @@ def main(video_path, model_path, output_path):
     print("\n✅ 处理完成！")
 
 if __name__ == "__main__":
-    video_input = "demo/test_short.mp4"
+    video_input = "demo/37233165569-1-192 - Trim.mp4"
     csv_output = "classroom_analysis_results.csv"
     main(video_input, "best_last_openvino_model", "output_xpu_colored.mp4")
     analyze_classroom_data(csv_output)
