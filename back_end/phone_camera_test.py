@@ -46,8 +46,9 @@ def generate_frames():
         if not success:
             break
         
-        # 1. 旋转画面 (变成竖向)
-        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        # 1. 旋转画面
+        # frame = cv2.rotate(frame, cv2.ROTATE_180)
+        # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
         # 不再使用手动 resize(640, 640)，而是让 YOLO 内部处理等比例缩放
         # imgsz=640 告诉 YOLO 以 640 为长边缩放，不足的部分会自动补黑边
@@ -63,8 +64,7 @@ def generate_frames():
         annotated_frame = results[0].plot()
 
         # 3. 图像后处理 (网页显示尺寸)
-        # 保持旋转后的比例显示：480宽，640高
-        frame_display = cv2.resize(annotated_frame, (480, 640))
+        frame_display = cv2.resize(annotated_frame, (640, 480))
         
         # 4. 编码与推送
         ret, buffer = cv2.imencode('.jpg', frame_display, [cv2.IMWRITE_JPEG_QUALITY, 60])

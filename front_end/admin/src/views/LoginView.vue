@@ -7,9 +7,6 @@
           <h1>智学堂·教师管理系统</h1>
           <p>赋能教学，科技让教育更简单</p>
         </div>
-        <div class="illustration">
-          
-        </div>
       </div>
 
       <div class="login-right">
@@ -38,22 +35,10 @@
               />
             </div>
 
-            <div class="form-options">
-              <label><input type="checkbox"> 记住我</label>
-              <a href="#">忘记密码？</a>
-            </div>
-
             <button type="submit" class="login-submit-btn" :disabled="loading">
               {{ loading ? "登录中..." : "立即登录" }}
             </button>
           </form>
-
-          <div class="other-login">
-            <span>其他登录方式</span>
-            <div class="icons">
-              <span class="wechat">微信扫码</span>
-            </div>
-          </div>
         </div>
       </div>
     </div>
@@ -68,13 +53,11 @@ import axios from 'axios'
 const router = useRouter()
 const loading = ref(false)
 
-// 登录表单
 const loginForm = reactive({
   username: '',
   password: ''
 })
 
-// 登录逻辑（对接后端 MySQL）
 const handleLogin = async () => {
   loading.value = true
   try {
@@ -84,13 +67,12 @@ const handleLogin = async () => {
       role: 'teacher'
     })
 
-    // 保存登录状态
     localStorage.setItem('userInfo', JSON.stringify(res.data.user))
     alert('登录成功！')
     router.push('/')
   } catch (err) {
-    const msg = err.response?.data?.message || '登录失败，请检查账号密码'
-    alert('登录失败：' + msg)
+    const msg = err.response?.data?.message || '登录失败'
+    alert('失败：' + msg)
   } finally {
     loading.value = false
   }
@@ -99,12 +81,12 @@ const handleLogin = async () => {
 
 <style scoped>
 .teacher-login-container {
+  width: 100vw;
   height: 100vh;
+  background: #f0f2f5;
   display: flex;
   align-items: center;
   justify-content: center;
-  background-color: #f0f2f5;
-  margin: 0;
 }
 
 .login-split {
@@ -117,21 +99,18 @@ const handleLogin = async () => {
   box-shadow: 0 20px 50px rgba(0,0,0,0.1);
 }
 
-/* 左侧装饰区 */
 .login-left {
   flex: 1.2;
   background: linear-gradient(135deg, #001529, #003a8c);
   color: white;
   padding: 60px;
   display: flex;
-  flex-direction: column;
-  justify-content: space-between;
+  align-items: center;
 }
 
 .logo-icon {
   font-size: 40px;
   margin-bottom: 20px;
-  display: block;
 }
 
 .brand-info h1 {
@@ -141,10 +120,8 @@ const handleLogin = async () => {
 
 .brand-info p {
   opacity: 0.7;
-  letter-spacing: 1px;
 }
 
-/* 右侧表单区 */
 .login-right {
   flex: 1;
   display: flex;
@@ -187,24 +164,11 @@ h2 {
   border: 1px solid #d9d9d9;
   border-radius: 4px;
   outline: none;
-  transition: all 0.3s;
 }
 
 .form-item input:focus {
   border-color: #1890ff;
   box-shadow: 0 0 0 2px rgba(24,144,255,0.2);
-}
-
-.form-options {
-  display: flex;
-  justify-content: space-between;
-  font-size: 13px;
-  margin-bottom: 25px;
-}
-
-.form-options a {
-  color: #1890ff;
-  text-decoration: none;
 }
 
 .login-submit-btn {
@@ -216,24 +180,9 @@ h2 {
   border-radius: 4px;
   font-size: 16px;
   cursor: pointer;
-  transition: background 0.3s;
 }
 
 .login-submit-btn:hover {
   background-color: #40a9ff;
-}
-
-.other-login {
-  margin-top: 40px;
-  text-align: center;
-  font-size: 12px;
-  color: #999;
-}
-
-.wechat {
-  display: inline-block;
-  margin-top: 10px;
-  color: #52c41a;
-  cursor: pointer;
 }
 </style>

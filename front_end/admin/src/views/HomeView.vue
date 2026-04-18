@@ -35,7 +35,7 @@
       <div class="stat-card purple">
         <p class="label">班级总人数</p>
         <h3>{{ totalStudents }}</h3>
-        <span>在线 {{ onlineStudents }} 人</span>
+        <span>本班学生总数</span>
       </div>
 
       <div class="stat-card cyan">
@@ -55,11 +55,11 @@
         </button>
         <button class="quick-btn" @click="goToMember">
           <span>👥</span>
-          会员管理
+          班级成员
         </button>
         <button class="quick-btn" @click="goToClassGroup">
           <span>🏫</span>
-          班级/小组
+          班级信息
         </button>
         <button class="quick-btn" @click="goToReport">
           <span>📊</span>
@@ -73,7 +73,7 @@
       <!-- 实时课堂状态 -->
       <section class="action-block">
         <div class="block-header">
-          <h3>📹 当前课堂实时状态</h3>
+          <h3>📹 当前课堂信息</h3>
         </div>
         <div class="real-time-info">
           <div class="real-item">
@@ -81,47 +81,40 @@
             <span>{{ currentClass }}</span>
           </div>
           <div class="real-item">
-            <label>上课时间</label>
-            <span>{{ classTime }}</span>
+            <label>授课科目</label>
+            <span>{{ subjectName }}</span>
           </div>
           <div class="real-item">
-            <label>课程名称</label>
-            <span>{{ className }}</span>
+            <label>班级人数</label>
+            <span>{{ totalStudents }} 人</span>
           </div>
         </div>
         <div class="tip">
-          计算机视觉分析已启动，实时监测学生抬头率、专注度、行为状态
+          计算机视觉分析已就绪，可实时监测学生抬头率、专注度、行为状态
         </div>
       </section>
 
-      <!-- 待处理报告 -->
+      <!-- 学生列表 -->
       <section class="action-block">
         <div class="block-header">
-          <h3>📝 待审阅行为报告</h3>
+          <h3>👨‍🎓 本班学生列表</h3>
         </div>
         <table class="report-table">
           <thead>
             <tr>
-              <th>学生</th>
+              <th>学生姓名</th>
               <th>班级</th>
-              <th>分析类型</th>
+              <th>性别</th>
               <th>状态</th>
-              <th>操作</th>
             </tr>
           </thead>
           <tbody>
-            <tr v-for="item in reportList" :key="item.id">
+            <tr v-for="item in studentList" :key="item.id">
               <td>{{ item.name }}</td>
-              <td>{{ item.class }}</td>
-              <td>{{ item.type }}</td>
+              <td>{{ currentClass }}</td>
+              <td>{{ item.gender }}</td>
               <td>
-                <span :class="['status', item.status === '待审阅' ? 'wait' : 'done']">
-                  {{ item.status }}
-                </span>
-              </td>
-              <td>
-                <button class="action-btn" v-if="item.status === '待审阅'">审阅</button>
-                <button class="action-btn success" v-else>已完成</button>
+                <span class="status done">正常</span>
               </td>
             </tr>
           </tbody>
@@ -132,38 +125,74 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
 
 // 老师信息
-const teacherName = ref('王老师')
-const today = ref('2025年12月19日 星期五')
+const teacherName = ref('')
+const currentClass = ref('')
+const subjectName = ref('')
+const today = ref('')
 
-// 数据统计
+// 统计数据
 const todayCourse = ref(4)
 const realTimeLookUp = ref(92)
 const focusRate = ref(88)
-const abnormalStudents = ref(3)
-const totalStudents = ref(45)
-const onlineStudents = ref(42)
-const waitPushReports = ref(16)
+const abnormalStudents = ref(0)
+const totalStudents = ref(0)
+const waitPushReports = ref(0)
 
-// 当前课堂
-const currentClass = ref('一年级1班')
-const classTime = ref('09:00 ~ 09:40')
-const className = ref('数学 · 分数乘除法')
+// 学生列表
+const studentList = ref([])
 
-// 报告列表
-const reportList = ref([
-  { id: 1, name: '张小明', class: '一年级1班', type: '课堂专注度', status: '待审阅' },
-  { id: 2, name: '李华', class: '一年级1班', type: '抬头行为', status: '待审阅' },
-  { id: 3, name: '王磊', class: '一年级1班', type: '课堂参与', status: '已审阅' },
-])
+// 格式化日期
+const formatDate = () => {
+  const d = new Date()
+  const year = d.getFullYear()
+  const month = d.getMonth() + 1
+  const day = d.getDate()
+  const week = '星期' + '日一二三四五六'[d.getDay()]
+  return `${year}年${month}月${day}日 ${week}`
+}
 
-// 跳转方法
+// 加载老师信息 + 班级 + 学生
+const loadTeacherData = async () => {
+  const userInfo = JSON.parse(localStorage.getItem('userInfo'))
+  if (!userInfo) return
+
+  teacherName.value = userInfo.name
+  const userId = userInfo.id
+
+  try {
+    // 1. 获取老师的班级、科目
+    const { data } = await axios.post('http://localhost:5001/teacher-class', {
+      user_id: userId
+    })
+
+    currentClass.value = data.class_name
+    subjectName.value = data.subject
+
+    // 2. 获取班级学生总数
+    totalStudents.value = data.student_count
+
+    // 3. 获取学生列表
+    studentList.value = data.students
+
+  } catch (err) {
+    console.error('加载失败', err)
+  }
+}
+
+onMounted(() => {
+  today.value = formatDate()
+  loadTeacherData()
+})
+
+// 跳转
 const goToClass = () => alert('进入上课页面')
-const goToMember = () => alert('跳转到会员管理')
-const goToClassGroup = () => alert('跳转到班级小组管理')
-const goToReport = () => alert('跳转到报告页面')
+const goToMember = () => alert('班级成员')
+const goToClassGroup = () => alert('班级信息')
+const goToReport = () => alert('报告管理')
 </script>
 
 <style scoped>
@@ -191,7 +220,6 @@ const goToReport = () => alert('跳转到报告页面')
   font-size: 14px;
 }
 
-/* 数据卡片 */
 .data-grid {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -204,8 +232,6 @@ const goToReport = () => alert('跳转到报告页面')
   padding: 20px;
   border-radius: 10px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-  position: relative;
-  overflow: hidden;
 }
 
 .stat-card.blue { border-left: 4px solid #1890ff; }
@@ -232,7 +258,6 @@ const goToReport = () => alert('跳转到报告页面')
   color: #999;
 }
 
-/* 快捷操作 */
 .quick-bar {
   background: white;
   padding: 16px 20px;
@@ -273,7 +298,6 @@ const goToReport = () => alert('跳转到报告页面')
   font-size: 20px;
 }
 
-/* 内容区块 */
 .action-sections {
   display: grid;
   grid-template-columns: 1fr 1fr;
@@ -301,7 +325,6 @@ const goToReport = () => alert('跳转到报告页面')
   font-size: 16px;
 }
 
-/* 实时信息 */
 .real-time-info {
   margin-bottom: 16px;
 }
@@ -327,7 +350,6 @@ const goToReport = () => alert('跳转到报告页面')
   margin-top: 10px;
 }
 
-/* 报告表格 */
 .report-table {
   width: 100%;
   border-collapse: collapse;
@@ -345,27 +367,8 @@ const goToReport = () => alert('跳转到报告页面')
   border-radius: 4px;
   font-size: 12px;
 }
-
-.status.wait {
-  background: #fff7e6;
-  color: #d48806;
-}
-
 .status.done {
   background: #f6ffed;
   color: #52c41a;
-}
-
-.action-btn {
-  padding: 4px 12px;
-  border: none;
-  border-radius: 4px;
-  background: #1890ff;
-  color: white;
-  cursor: pointer;
-}
-
-.action-btn.success {
-  background: #52c41a;
 }
 </style>

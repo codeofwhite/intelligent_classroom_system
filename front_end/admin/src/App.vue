@@ -1,54 +1,61 @@
 <template>
   <div class="teacher-app">
-    <aside v-if="route.path !== '/login'" class="sidebar">
-      <div class="brand">
-        <span class="logo">🎓</span>
-        <span class="title">智慧课堂系统</span>
-      </div>
+    <!-- 登录页面：不显示侧边栏 + 顶部栏 -->
+    <div v-if="route.path === '/login'" class="full-page">
+      <router-view />
+    </div>
 
-      <nav class="menu">
-        <router-link to="/" class="menu-item">
-          <i class="icon">📊</i>
-          <span class="label">工作台首页</span>
-        </router-link>
-        <router-link to="/videos" class="menu-item">
-          <i class="icon">📹</i>
-          <span class="label">课堂录像回放</span>
-        </router-link>
-        <router-link to="/members" class="menu-item">
-          <i class="icon">👥</i>
-          <span class="label">班级成员管理</span>
-        </router-link>
-        <router-link to="/reports" class="menu-item">
-          <i class="icon">📝</i>
-          <span class="label">学生行为报告</span>
-        </router-link>
-      </nav>
-
-      <div class="sidebar-footer">
-        <button @click="handleLogout" class="logout-btn">
-          退出登录
-        </button>
-      </div>
-    </aside>
-
-    <section class="main-container">
-      <header v-if="route.path !== '/login'" class="top-header">
-        <div class="breadcrumb">
-          {{ currentClass }} /
-          <span>{{ route.meta.title || '工作台' }}</span>
+    <!-- 已登录：显示侧边栏 + 布局 -->
+    <div v-else class="layout">
+      <aside class="sidebar">
+        <div class="brand">
+          <span class="logo">🎓</span>
+          <span class="title">智慧课堂系统</span>
         </div>
-        <div class="teacher-profile">
-          <span class="notice">🔔</span>
-          <span class="name">{{ teacherName }}</span>
-          <div class="avatar">👨‍🏫</div>
-        </div>
-      </header>
 
-      <main :class="{ content: route.path !== '/login', full: route.path === '/login' }">
-        <router-view />
-      </main>
-    </section>
+        <nav class="menu">
+          <router-link to="/" class="menu-item">
+            <i class="icon">📊</i>
+            <span class="label">工作台首页</span>
+          </router-link>
+          <router-link to="/videos" class="menu-item">
+            <i class="icon">📹</i>
+            <span class="label">课堂录像回放</span>
+          </router-link>
+          <router-link to="/members" class="menu-item">
+            <i class="icon">👥</i>
+            <span class="label">班级成员管理</span>
+          </router-link>
+          <router-link to="/reports" class="menu-item">
+            <i class="icon">📝</i>
+            <span class="label">学生行为报告</span>
+          </router-link>
+        </nav>
+
+        <div class="sidebar-footer">
+          <button @click="handleLogout" class="logout-btn">
+            退出登录
+          </button>
+        </div>
+      </aside>
+
+      <div class="main-container">
+        <header class="top-header">
+          <div class="breadcrumb">
+            <span>{{ route.meta.title || '工作台' }}</span>
+          </div>
+          <div class="teacher-profile">
+            <span class="notice">🔔</span>
+            <span class="name">{{ teacherName }}</span>
+            <div class="avatar">👨‍🏫</div>
+          </div>
+        </header>
+
+        <main class="content">
+          <router-view />
+        </main>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -60,41 +67,69 @@ const router = useRouter()
 const route = useRoute()
 
 const teacherName = ref('')
-const currentClass = ref('三年级二班')
+const isLoggedIn = ref(false)
 
-// 初始化：读取登录状态
+// 初始化登录状态
 onMounted(() => {
   const user = localStorage.getItem('userInfo')
   if (user) {
-    const userObj = JSON.parse(user)
-    teacherName.value = userObj.name || '老师'
+    try {
+      const u = JSON.parse(user)
+      isLoggedIn.value = true
+      teacherName.value = u.name || '老师'
+    } catch (e) {}
   } else {
-    if (route.path !== '/login') router.push('/login')
+    if (route.path !== '/login') {
+      router.push('/login')
+    }
   }
 })
 
 // 登出
 const handleLogout = () => {
+  isLoggedIn.value = false
+  teacherName.value = ''
   localStorage.removeItem('userInfo')
   router.push('/login')
 }
 </script>
 
-<style scoped>
+<style>
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
 .teacher-app {
-  display: flex;
-  height: 100vh;
-  background: #f5f7fa;
+  width: 100%;
+  min-height: 100vh;
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
+.full-page {
+  width: 100%;
+  height: 100vh;
+}
+
+.layout {
+  display: flex;
+  width: 100%;
+  min-height: 100vh;
+}
+
+/* 侧边栏 */
 .sidebar {
   width: 230px;
   background: #1e293b;
   color: #fff;
   display: flex;
   flex-direction: column;
-  box-shadow: 2px 0 8px rgba(0, 0, 0, 0.1);
+  position: fixed;
+  height: 100vh;
+  left: 0;
+  top: 0;
+  z-index: 99;
 }
 
 .brand {
@@ -166,11 +201,13 @@ const handleLogout = () => {
   color: #fff;
 }
 
+/* 右侧主体 */
 .main-container {
   flex: 1;
   display: flex;
   flex-direction: column;
-  overflow: hidden;
+  margin-left: 230px;
+  width: calc(100% - 230px);
 }
 
 .top-header {
@@ -212,8 +249,6 @@ const handleLogout = () => {
   flex: 1;
   padding: 24px;
   overflow-y: auto;
-}
-.full {
-  height: 100vh;
+  background: #f5f7fa;
 }
 </style>

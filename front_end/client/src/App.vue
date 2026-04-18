@@ -14,6 +14,11 @@
           <div class="user-info">
             <div class="role">{{ userRole === 'student' ? '学生' : '家长' }}</div>
             <div class="name">{{ userName }}</div>
+
+            <!-- 显示 班级 / 关联学生 -->
+            <div class="extra" v-if="relationText">
+              {{ relationText }}
+            </div>
           </div>
         </div>
 
@@ -46,48 +51,64 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
 
 const router = useRouter()
 const route = useRoute()
 
-// 登录状态
 const isLoggedIn = ref(false)
 const userRole = ref('')
 const userName = ref('')
+const relationText = ref('') // 班级 / 孩子名称
 
-// 页面刷新时自动恢复登录状态
 onMounted(() => {
   const user = localStorage.getItem('currentUser')
+  const relations = localStorage.getItem('currentRelations')
   if (user) {
     try {
       const u = JSON.parse(user)
       isLoggedIn.value = true
       userRole.value = u.role
-      userName.value = u.username
+      userName.value = u.name
+
+      // 读取关联信息
+      if (relations) {
+        const rel = JSON.parse(relations)
+        if (u.role === 'student') {
+          const cls = rel[0]
+          relationText.value = cls.class_name
+        } else if (u.role === 'parent') {
+          const names = rel.map(r => r.username).join('、')
+          relationText.value = '孩子：' + names
+        }
+      }
     } catch (e) {}
   }
 })
 
-// =============== 关键修复：登录成功后立刻更新，不延迟 ===============
 const onLoginSuccess = (userInfo) => {
-  // 直接赋值，强制响应式更新
   isLoggedIn.value = true
   userRole.value = userInfo.role
-  userName.value = userInfo.username
-  
-  // 等下一帧再跳转，确保侧边栏渲染出来
-  setTimeout(() => {
-    router.push('/')
-  }, 10)
+  userName.value = userInfo.name
+
+  // 读取关系并显示
+  const rel = JSON.parse(localStorage.getItem('currentRelations') || '[]')
+  if (userInfo.role === 'student') {
+    relationText.value = rel[0]?.class_name || ''
+  } else if (userInfo.role === 'parent') {
+    const names = rel.map(r => r.username).join('、')
+    relationText.value = '孩子：' + names
+  }
+
+  setTimeout(() => router.push('/'), 10)
 }
 
-// 登出
 const handleLogout = () => {
   isLoggedIn.value = false
   userRole.value = ''
   userName.value = ''
+  relationText.value = ''
   localStorage.clear()
   router.push('/login')
 }
@@ -108,22 +129,16 @@ body {
   width: 100%;
   min-height: 100vh;
 }
-
-
-/* 登录页面全屏 */
 .full-page {
   width: 100%;
   min-height: 100vh;
 }
-
-/* 主布局 */
 .layout {
   display: flex;
   width: 100%;
   min-height: 100vh;
 }
 
-/* 侧边栏 */
 .sidebar {
   width: 240px;
   background: #fff;
@@ -156,6 +171,11 @@ body {
 .user-info .name {
   color: #666;
   margin-top: 4px;
+}
+.user-info .extra {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #999;
 }
 
 .menu-list {
@@ -197,7 +217,6 @@ body {
   background: #ff5252;
 }
 
-/* 内容区 */
 .content {
   flex: 1;
   margin-left: 240px;
