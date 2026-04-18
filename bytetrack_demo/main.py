@@ -150,7 +150,7 @@ def main(video_path, model_path, output_path):
         frame_count += 1
         
         # 1. YOLO 检测 (使用 OpenVINO)
-        results = model.predict(frame, device="cpu", conf=0.25, verbose=False)
+        results = model.predict(frame, device="cpu", conf=0.3, verbose=False)
         det = results[0].boxes.data.cpu().numpy() # [x1, y1, x2, y2, conf, cls]
         
         if len(det) > 0:

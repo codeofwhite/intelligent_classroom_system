@@ -22,43 +22,43 @@ def login():
     data = request.json
     username = data.get('username')
     password = data.get('password')
-    role = data.get('role')
+    role = data.get('role') # teacher / student / parent
+
+    if not username or not password or not role:
+        return jsonify({"status": "error", "message": "参数不全"}), 400
 
     conn = get_db_conn()
     try:
         with conn.cursor() as cursor:
-            # 1. 验证用户名、密码和角色是否匹配
-            # 生产环境应使用 Werkzeug 密码哈希校验，这里演示用明文
-            sql_user = "SELECT * FROM users WHERE username = %s AND password = %s AND role = %s"
-            cursor.execute(sql_user, (username, password, role))
+            sql = """
+                SELECT id, username, name, role 
+                FROM users 
+                WHERE username = %s AND password = %s AND role = %s
+            """            
+            cursor.execute(sql, (username, password, role))            
             user = cursor.fetchone()
             
             if not user:
-                return jsonify({"status": "error", "message": "用户名、密码或身份不匹配"}), 401
-
-            # 2. 查询该用户的关联关系
-            # 修改了 SQL 使其能查出关联人的姓名和角色
-            sql_rel = """
-                SELECT u.username, u.role, r.relation_type 
-                FROM user_relations r
-                JOIN users u ON r.to_user_id = u.id
-                WHERE r.from_user_id = %s
-            """
-            cursor.execute(sql_rel, (user['id'],))
-            relations = cursor.fetchall()
+                return jsonify({"status": "error", "message": "用户名或密码错误"}), 401
             
-            # 为了让前端知道“我是谁的家长”，如果自己是家长，则 relations 里的学生就是自己的孩子
+            # 返回教师信息（前端需要）
             return jsonify({
                 "status": "success",
                 "user": {
-                    "id": user['id'],
-                    "username": user['username'],
-                    "role": user['role']
-                },
-                "relations": relations
+                    "id": user["id"],
+                    "username": user["username"],
+                    "name": user["name"],
+                    "role": user["role"]
+                }
             })
+            
     finally:
         conn.close()
+   
+# 健康检查
+@app.route('/')
+def index():
+    return "User Center Service Running"
            
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)

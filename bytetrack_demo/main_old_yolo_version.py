@@ -22,7 +22,7 @@ import functools
 torch.load = functools.partial(torch.load, weights_only=False)
 
 class ByteTrackArgs:
-    track_thresh = 0.25
+    track_thresh = 0.2
     track_buffer = 30
     match_thresh = 0.8
     aspect_ratio_thresh = 1.6
@@ -69,7 +69,7 @@ def main(video_path, weight_path, output_path):
             pred = model(img, augment=False)[0]
         
         # --- 4. NMS 过滤 ---
-        det = non_max_suppression(pred, 0.25, 0.45, classes=None, agnostic=False)[0]
+        det = non_max_suppression(pred, 0.1, 0.6, classes=None, agnostic=False)[0]
 
         if det is not None and len(det):
             # 坐标还原到原图尺寸
@@ -135,4 +135,4 @@ def save_and_analyze(data):
 
 if __name__ == "__main__":
     # 请根据实际路径修改
-    main(video_path="demo/579977249-1-208 - Trim.mp4", weight_path="yolov7_epoch42.pt", output_path="result.mp4")
+    main(video_path="demo/579977249-1-208 - Trim.mp4", weight_path="yolov7/runs/train/scb_v1_run_multi_gpu/weights/best.pt", output_path="result.mp4")

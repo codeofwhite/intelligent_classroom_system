@@ -21,7 +21,7 @@
             <div class="form-item">
               <label>工号/手机号</label>
               <input 
-                v-model="loginForm.id" 
+                v-model="loginForm.username" 
                 type="text" 
                 placeholder="请输入您的教职工号" 
                 required
@@ -43,8 +43,8 @@
               <a href="#">忘记密码？</a>
             </div>
 
-            <button type="submit" class="login-submit-btn">
-              立即登录
+            <button type="submit" class="login-submit-btn" :disabled="loading">
+              {{ loading ? "登录中..." : "立即登录" }}
             </button>
           </form>
 
@@ -61,20 +61,39 @@
 </template>
 
 <script setup>
-import { reactive } from 'vue'
+import { reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
+import axios from 'axios'
 
 const router = useRouter()
+const loading = ref(false)
+
+// 登录表单
 const loginForm = reactive({
-  id: '',
+  username: '',
   password: ''
 })
 
-const handleLogin = () => {
-  // 暂时不连数据库，点击即通过
-  console.log('教师登录信息：', loginForm)
-  // 模拟登录成功后的跳转
-  router.push('/')
+// 登录逻辑（对接后端 MySQL）
+const handleLogin = async () => {
+  loading.value = true
+  try {
+    const res = await axios.post('http://localhost:5001/login', {
+      username: loginForm.username,
+      password: loginForm.password,
+      role: 'teacher'
+    })
+
+    // 保存登录状态
+    localStorage.setItem('userInfo', JSON.stringify(res.data.user))
+    alert('登录成功！')
+    router.push('/')
+  } catch (err) {
+    const msg = err.response?.data?.message || '登录失败，请检查账号密码'
+    alert('登录失败：' + msg)
+  } finally {
+    loading.value = false
+  }
 }
 </script>
 
