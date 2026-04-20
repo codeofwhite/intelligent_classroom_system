@@ -9,7 +9,6 @@ import Medal from '../views/student/Medal.vue'
 // 家长页面
 import Report from '../views/parent/Report.vue'
 import Suggest from '../views/parent/Suggest.vue'
-import Warning from '../views/parent/Warning.vue'
 
 const routes = [
   {
@@ -31,7 +30,6 @@ const routes = [
   // 家长
   { path: '/report', component: Report },
   { path: '/suggest', component: Suggest },
-  { path: '/warning', component: Warning },
 ]
 
 const router = createRouter({

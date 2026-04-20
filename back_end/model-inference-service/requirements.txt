@@ -1,0 +1,8 @@
+flask
+pymysql
+flask_cors
+cryptography
+minio
+ultralytics
+opencv-python
+openvino>=2024.0.0

@@ -4,10 +4,12 @@ import numpy as np
 from datetime import datetime
 import os
 from flask import Flask, render_template, Response, jsonify
+from flask_cors import CORS
 import threading
 
 # ===================== Flask 应用 =====================
 app = Flask(__name__)
+CORS(app)
 
 # ===================== 配置 =====================
 SIGN_LOG = "sign_log.txt"
@@ -124,4 +126,4 @@ def get_sign_log():
 # ===================== 启动 =====================
 if __name__ == "__main__":
     load_face_database()
-    app.run(host="0.0.0.0", port=5001, debug=True)
+    app.run(host="0.0.0.0", port=5003, debug=True)

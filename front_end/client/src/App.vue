@@ -31,9 +31,8 @@
           </template>
 
           <template v-if="userRole === 'parent'">
-            <router-link to="/report" class="menu-item">📈 学情报告单</router-link>
-            <router-link to="/suggest" class="menu-item">💡 家校共育建议</router-link>
-            <router-link to="/warning" class="menu-item">⚠️ 异常行为摘要</router-link>
+            <router-link to="/child-report" class="menu-item">👶 孩子课堂报告</router-link>
+            <router-link to="/parent-suggest" class="menu-item">🏠 家校共育建议</router-link>
           </template>
         </div>
 
@@ -83,7 +82,7 @@ onMounted(() => {
           relationText.value = '孩子：' + names
         }
       }
-    } catch (e) {}
+    } catch (e) { }
   }
 })
 
@@ -120,19 +119,23 @@ const handleLogout = () => {
   padding: 0;
   box-sizing: border-box;
 }
+
 body {
   font-family: 'Microsoft YaHei', sans-serif;
   background: #f7f9fc;
   color: #333;
 }
+
 #app {
   width: 100%;
   min-height: 100vh;
 }
+
 .full-page {
   width: 100%;
   min-height: 100vh;
 }
+
 .layout {
   display: flex;
   width: 100%;
@@ -142,7 +145,7 @@ body {
 .sidebar {
   width: 240px;
   background: #fff;
-  box-shadow: 0 0 12px rgba(0,0,0,0.08);
+  box-shadow: 0 0 12px rgba(0, 0, 0, 0.08);
   display: flex;
   flex-direction: column;
   position: fixed;
@@ -151,27 +154,33 @@ body {
   top: 0;
   z-index: 99;
 }
+
 .sidebar-header {
   padding: 24px 20px;
   border-bottom: 1px solid #f0f0f0;
 }
+
 .logo {
   font-size: 20px;
   font-weight: bold;
   color: #4e8cff;
   margin-bottom: 16px;
 }
+
 .user-info {
   font-size: 13px;
 }
+
 .user-info .role {
   color: #4e8cff;
   font-weight: bold;
 }
+
 .user-info .name {
   color: #666;
   margin-top: 4px;
 }
+
 .user-info .extra {
   margin-top: 4px;
   font-size: 12px;
@@ -182,6 +191,7 @@ body {
   flex: 1;
   padding: 20px 0;
 }
+
 .menu-item {
   display: block;
   padding: 12px 24px;
@@ -190,10 +200,12 @@ body {
   font-size: 14px;
   transition: 0.2s;
 }
+
 .menu-item:hover {
   background: #f0f7ff;
   color: #4e8cff;
 }
+
 .menu-item.router-link-active {
   background: #e8f3ff;
   color: #4e8cff;
@@ -204,6 +216,7 @@ body {
   padding: 16px 20px;
   border-top: 1px solid #f0f0f0;
 }
+
 .logout-btn {
   width: 100%;
   padding: 10px;
@@ -213,6 +226,7 @@ body {
   color: #fff;
   cursor: pointer;
 }
+
 .logout-btn:hover {
   background: #ff5252;
 }

@@ -4,7 +4,7 @@
 
     <!--  Flask 视频流  -->
     <div class="video-box">
-      <img src="http://localhost:5001/video_feed" class="live-video" />
+      <img src="http://localhost:5003/video_feed" class="live-video" />
     </div>
 
     <div class="logs">
@@ -27,7 +27,7 @@ const logs = ref([
 // 定时拉取签到日志
 async function fetchLogs() {
   try {
-    const res = await axios.get('http://localhost:5001/get_sign_log')
+    const res = await axios.get('http://localhost:5003/get_sign_log')
     logs.value = res.data.logs
   } catch (err) {
     console.log('获取日志失败')

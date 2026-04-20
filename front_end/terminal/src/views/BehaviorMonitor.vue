@@ -9,7 +9,7 @@
           <h3>> 实时画面</h3>
           <!-- 固定尺寸手机横屏窗口 -->
           <div class="video-phone-frame">
-            <img src="http://localhost:5000/video_feed" class="video-feed" />
+            <img src="http://localhost:5002/video_feed" class="video-feed" />
           </div>
           <p class="status">
             状态：<span class="green">● 实时分析中</span>
@@ -125,7 +125,7 @@ const logs = ref([
 
 async function fetchModels() {
   try {
-    const res = await axios.get('http://localhost:5000/get_models')
+    const res = await axios.get('http://localhost:5002/get_models')
     modelOptions.value = res.data.models
     selectedModel.value = res.data.current
   } catch (e) {}
@@ -134,7 +134,7 @@ async function fetchModels() {
 async function changeModel() {
   switching.value = true
   try {
-    await axios.post('http://localhost:5000/switch_model', {
+    await axios.post('http://localhost:5002/switch_model', {
       model_name: selectedModel.value
     })
   } catch (e) {}

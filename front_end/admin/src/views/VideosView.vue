@@ -16,22 +16,23 @@
           accept="video/*"
         />
 
-        <!-- 模型选择 -->
-        <select v-model="selectedModel" class="model-select" @change="switchModel">
-          <option value="headup">抬头率识别模型</option>
-          <option value="focus">专注度分析模型</option>
-          <option value="behavior">综合行为分析模型</option>
+        <!-- 模型选择（自动从后端获取） -->
+        <select v-model="selectedModel" class="model-select" @change="switchModel" :disabled="switching">
+          <option v-for="model in modelOptions" :key="model" :value="model">
+            {{ model }}
+          </option>
         </select>
 
-        <button @click="startAnalysis" :disabled="loading" class="btn-primary">
+        <button @click="startAnalysis" :disabled="loading || switching" class="btn-primary">
           {{ loading ? "AI 分析中..." : "开始上传并分析" }}
         </button>
+        <span v-if="switching" style="color: #666; font-size:13px;">正在切换模型...</span>
       </div>
 
       <!-- 结果回放 -->
       <div v-if="resultUrl" class="result-section">
         <h4>✅ 分析完成</h4>
-        <video :src="resultUrl" controls class="result-video"></video>
+        <video :src="resultUrl" controls class="result-video" type="video/mp4" muted></video>
         <p class="tip">文件已自动保存至云端存储</p>
 
         <!-- 学生行为列表 -->
@@ -75,7 +76,7 @@
       <div class="video-grid">
         <div v-for="video in videoList" :key="video.name" class="video-card">
           <p class="time">{{ video.time }}</p>
-          <video :src="video.url" controls></video>
+          <video :src="video.url" controls type="video/mp4" muted></video>
           <p class="name">{{ video.name }}</p>
           <button class="small-btn" @click="goToReportByVideo(video.id)">
             查看全班报告
@@ -98,11 +99,13 @@ const router = useRouter()
 const videoInput = ref(null)
 const videoFile = ref(null)
 const loading = ref(false)
+const switching = ref(false)
 const resultUrl = ref('')
 const videoList = ref([])
 
-// 模型选择（对接 /switch_model）
-const selectedModel = ref('behavior')
+// 模型相关（自动从后端获取）
+const modelOptions = ref([])
+const selectedModel = ref('')
 
 // 模拟学生行为数据
 const studentList = ref([
@@ -118,21 +121,38 @@ function onFileChange(e) {
 }
 
 // ======================
-// ✅ 切换模型（调用你的接口）
+// 从后端获取模型列表
 // ======================
-async function switchModel() {
+async function fetchModels() {
   try {
-    await axios.post('http://localhost:5000/switch_model', {
-      model_name: selectedModel.value
-    })
-    console.log('模型切换成功：', selectedModel.value)
+    const res = await axios.get('http://localhost:5002/get_models')
+    modelOptions.value = res.data.models
+    selectedModel.value = res.data.current
   } catch (err) {
-    alert('模型切换失败')
+    console.error('获取模型列表失败')
   }
 }
 
 // ======================
-// ✅ 上传视频 + 分析
+// 切换模型
+// ======================
+async function switchModel() {
+  if (!selectedModel.value) return
+  switching.value = true
+  try {
+    await axios.post('http://localhost:5002/switch_model', {
+      model_name: selectedModel.value
+    })
+    console.log('模型切换成功:', selectedModel.value)
+  } catch (err) {
+    alert('模型切换失败')
+  } finally {
+    switching.value = false
+  }
+}
+
+// ======================
+// 上传视频 + 分析
 // ======================
 async function startAnalysis() {
   if (!videoFile.value) {
@@ -143,12 +163,9 @@ async function startAnalysis() {
   loading.value = true
   const formData = new FormData()
   formData.append('video', videoFile.value)
-  
-  // 把当前选中模型一起带给后端
-  formData.append('model', selectedModel.value)
 
   try {
-    const res = await axios.post('http://localhost:5000/upload_video', formData)
+    const res = await axios.post('http://localhost:5002/upload_video', formData)
     resultUrl.value = res.data.video_url
   } catch (err) {
     alert('分析失败，请检查后端服务')
@@ -157,10 +174,12 @@ async function startAnalysis() {
   }
 }
 
-// 获取历史列表
+// ======================
+// 获取历史记录
+// ======================
 async function fetchVideoList() {
   try {
-    const res = await axios.get('http://localhost:5000/list_videos')
+    const res = await axios.get('http://localhost:5002/list_videos')
     videoList.value = res.data
   } catch (err) {
     console.error('获取失败')
@@ -179,7 +198,9 @@ function goToReportByVideo(videoId) {
   router.push({ path: '/student-report', query: { videoId } })
 }
 
+// 页面加载时获取模型和历史记录
 onMounted(() => {
+  fetchModels()
   fetchVideoList()
 })
 </script>

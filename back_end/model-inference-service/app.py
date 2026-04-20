@@ -19,7 +19,7 @@ model = YOLO(os.path.join(MODELS_DIR, current_model_name), task='detect') if cur
 
 # --- 1. 配置 MinIO 连接 ---
 minio_client = Minio(
-    "localhost:9000",
+    "minio:9000",
     access_key="admin",
     secret_key="password123",
     secure=False
@@ -46,8 +46,9 @@ def generate_frames():
         if not success:
             break
         
-        # 1. 旋转画面 (变成竖向)
-        frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
+        # 1. 旋转画面
+        # frame = cv2.rotate(frame, cv2.ROTATE_180)
+        # frame = cv2.rotate(frame, cv2.ROTATE_90_CLOCKWISE)
 
         # 不再使用手动 resize(640, 640)，而是让 YOLO 内部处理等比例缩放
         # imgsz=640 告诉 YOLO 以 640 为长边缩放，不足的部分会自动补黑边
@@ -63,8 +64,7 @@ def generate_frames():
         annotated_frame = results[0].plot()
 
         # 3. 图像后处理 (网页显示尺寸)
-        # 保持旋转后的比例显示：480宽，640高
-        frame_display = cv2.resize(annotated_frame, (480, 640))
+        frame_display = cv2.resize(annotated_frame, (640, 480))
         
         # 4. 编码与推送
         ret, buffer = cv2.imencode('.jpg', frame_display, [cv2.IMWRITE_JPEG_QUALITY, 60])
@@ -106,54 +106,58 @@ def upload_video():
         return jsonify({"error": "No video uploaded"}), 400
     
     file = request.files['video']
-    ext = ".mp4" # 强制输出为 mp4 方便网页播放
+    ext = ".mp4"
     unique_filename = f"{uuid.uuid4()}{ext}"
     
     try:
         with tempfile.TemporaryDirectory() as tmpdirname:
             input_path = os.path.join(tmpdirname, "input_" + unique_filename)
             output_path = os.path.join(tmpdirname, "output_" + unique_filename)
+            final_path = os.path.join(tmpdirname, "final_" + unique_filename)
             file.save(input_path)
 
-            # 1. 使用 OpenCV 读取视频获取属性
             cap = cv2.VideoCapture(input_path)
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = cap.get(cv2.CAP_PROP_FPS) or 25
             
-            # 2. 定义写入器 (使用 mp4v 或 avc1 编码)
-            fourcc = cv2.VideoWriter_fourcc(*'avc1')
+            # -----------------------
+            # ✅ 用 mp4v，绝对不报错
+            # -----------------------
+            fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-            # 3. 逐帧推理并写入 (参考你给的代码逻辑)
-            # 使用 stream=True 节省内存
             results = model.predict(source=input_path, stream=True, conf=0.25, verbose=False)
             
             for result in results:
-                # 获取渲染了检测框的帧
                 annotated_frame = result.plot()
                 out.write(annotated_frame)
             
-            # 记得一定要释放资源，否则文件会被占用无法上传
             cap.release()
             out.release()
 
-            # 4. 检查输出文件是否存在且有大小
-            if not os.path.exists(output_path) or os.path.getsize(output_path) == 0:
-                raise Exception("视频处理失败，生成的视频文件为空")
+            # -----------------------
+            # ✅ 关键：ffmpeg 转成浏览器能播的 avc1
+            # -----------------------
+            os.system(f'ffmpeg -i "{output_path}" -c:v libx264 -preset fast -crf 23 -y "{final_path}"')
 
-            # 在接口内生成文件名
+            if not os.path.exists(final_path) or os.path.getsize(final_path) == 0:
+                raise Exception("视频转码失败")
+
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             unique_id = uuid.uuid4().hex[:6]
-            # 最终存储在 MinIO 的名字：20260410_0055_classroom_a1b2.mp4
             object_name = f"processed/{timestamp}_classroom_{unique_id}.mp4"
-            minio_client.fput_object(BUCKET_NAME, object_name, output_path)
             
-            # 6. 生成签名链接返回给前端
+            minio_client.fput_object(
+                BUCKET_NAME,
+                object_name,
+                final_path,
+                content_type="video/mp4"
+            )
+            
             download_url = minio_client.get_presigned_url("GET", BUCKET_NAME, object_name)
-
             return jsonify({
-                "status": "success", 
+                "status": "success",
                 "video_url": download_url,
                 "msg": "处理完成"
             })
@@ -181,4 +185,4 @@ def list_videos():
         return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
-    app.run(host='0.0.0.0', port=5000, debug=False, threaded=True)
+    app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)
