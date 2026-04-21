@@ -135,4 +135,4 @@ def save_and_analyze(data):
 
 if __name__ == "__main__":
     # 请根据实际路径修改
-    main(video_path="demo/579977249-1-208 - Trim.mp4", weight_path="yolov7/runs/train/scb_v1_run_multi_gpu/weights/best.pt", output_path="result.mp4")
+    main(video_path="demo/Video Project 5.mp4", weight_path="yolov7/runs/train/scb_v1_run_multi_gpu/weights/best.pt", output_path="result.mp4")

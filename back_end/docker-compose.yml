@@ -38,24 +38,5 @@ services:
       DB_PASSWORD: password123
       DB_NAME: user_center_db
 
-  model-inference-service:
-    build: ./model-inference-service
-    container_name: model-inference-app
-    ports:
-      - "5002:5002" # 之前是 5000，改为 5002 避免冲突
-    depends_on:
-      - minio
-    environment:
-      MINIO_ENDPOINT: minio
-      MINIO_ACCESS_KEY: admin
-      MINIO_SECRET_KEY: password123
-      MINIO_BUCKET_NAME: video-bucket
-
-  face-recognition-service:
-    build: ./face-recognition-service
-    container_name: face-recognition-app
-    ports:
-      - "5003:5003" # 之前是 5000，改为 5003 避免冲突
-
 volumes:
   minio_data:
