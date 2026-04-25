@@ -6,12 +6,21 @@ import csv
 import sys
 import time
 import tempfile
+import pymysql
 from collections import deque
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from ultralytics import YOLO
 from minio import Minio
 from datetime import datetime
+
+db = pymysql.connect(
+    host="localhost",
+    user="root",
+    password="password123",
+    database="user_center_db",
+    charset='utf8mb4'
+)
 
 # ==========================
 # 全局关键帧配置（全班分心才截图）
@@ -41,6 +50,7 @@ class ByteTrackArgs:
     mot20 = False
 
 app = Flask(__name__)
+app.config['DEBUG'] = True
 CORS(app)
 
 MODELS_DIR = "models"
@@ -62,7 +72,7 @@ os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 os.makedirs(RESULT_FOLDER, exist_ok=True)
 
 model = YOLO("models/best_last_openvino_model/", task='detect')
-video_source = "http://192.168.1.196:8080/video"
+video_source = "http://192.168.26.157:8080/video"
 
 # ========================
 # 颜色函数
@@ -78,10 +88,150 @@ def get_color(category_id):
     ]
     return colors[category_id % len(colors)]
 
+# ==========================
+# 实时监测 全局状态
+# ==========================
+is_recording = False
+real_time_stats = {
+    "hand_up": 0,      # Raising-Hand 举手
+    "study_norm": 0,   # Reading / Writing 正常学习
+    "look_down": 0,    # Head-down 低头
+    "abnormal": 0      # Useing-Phone / Sleep 严重分心
+}
+real_time_logs = []
+video_writer = None
+output_video_path = None
+
+# ==========================
+# 开始录制
+# ==========================
+@app.route('/start_record', methods=['POST'])
+def start_record():
+    global is_recording, video_writer, output_video_path
+    if is_recording:
+        return jsonify({"status": "already recording"})
+    
+    data = request.json
+    teacher_code = data.get("teacher_code", "T2025001")
+    class_id = data.get("class_id", 1)
+    lesson_section = data.get("lesson_section", "实时课堂")
+
+    # 初始化视频保存
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    tmp_dir = tempfile.gettempdir()
+    output_video_path = os.path.join(tmp_dir, f"record_{timestamp}.mp4")
+    
+    # 获取分辨率
+    cap = cv2.VideoCapture(video_source)
+    w = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+    h = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+    fps = 25
+    fourcc = cv2.VideoWriter_fourcc(*'mp4v')
+    video_writer = cv2.VideoWriter(output_video_path, fourcc, fps, (w, h))
+    cap.release()
+
+    # 清空统计
+    real_time_stats["hand_up"] = 0
+    real_time_stats["study_norm"] = 0
+    real_time_stats["look_down"] = 0
+    real_time_stats["abnormal"] = 0
+    real_time_logs.clear()
+
+    is_recording = True
+    return jsonify({"status": "started"})
+
+# ==========================
+# 停止录制 + 自动上传入库
+# ==========================
+@app.route('/stop_record', methods=['POST'])
+def stop_record():
+    global is_recording, video_writer
+    if not is_recording:
+        return jsonify({"status": "not recording"})
+
+    is_recording = False
+    if video_writer:
+        video_writer.release()
+
+    data = request.json
+    teacher_code = data.get("teacher_code", "T2025001")
+    class_id = data.get("class_id", 1)
+    lesson_section = data.get("lesson_section", "实时课堂")
+
+    # 自动上传逻辑（和你 upload 接口一模一样）
+    try:
+        time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = f"teacher_{teacher_code}/class_{class_id}/{time_str}_{lesson_section}"
+        video_obj = f"{base}/live.mp4"
+        json_obj = f"{base}/live_stats.json"
+
+        # 保存统计
+        stats = {
+            "total_frames": 0,
+            "behavior_counts": {
+                "举手": real_time_stats["hand_up"],
+                "看书": real_time_stats["study_norm"],
+                "写字": 0,
+                "使用手机": real_time_stats["abnormal"],
+                "低头做其他事情": real_time_stats["look_down"],
+                "睡觉": 0
+            }
+        }
+        json_path = os.path.join(tempfile.gettempdir(), "live_stats.json")
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(stats, f, ensure_ascii=True, indent=2)
+
+        # 上传 MinIO
+        minio_client.fput_object(BUCKET_NAME, video_obj, output_video_path)
+        minio_client.fput_object(BUCKET_NAME, json_obj, json_path)
+
+        # 写入数据库
+        db_temp = pymysql.connect(
+            host="localhost", user="root", password="password123", database="user_center_db", charset='utf8mb4'
+        )
+        cursor = db_temp.cursor()
+        report_code = f"R{datetime.now().strftime('%Y%m%d%H%M%S')}"
+        cursor.execute("""
+            INSERT INTO course_reports
+            (report_code, teacher_code, class_id, lesson_section, minio_video_path, minio_json_path, minio_csv_path)
+            VALUES (%s,%s,%s,%s,%s,%s,'')
+        """, (report_code, teacher_code, int(class_id), lesson_section, video_obj, json_obj))
+        db_temp.commit()
+        cursor.close()
+        db_temp.close()
+
+        return jsonify({"status": "stopped & saved & uploaded"})
+    except Exception as e:
+        print("SAVE ERROR:", e)
+        return jsonify({"error": str(e)}), 500
+
+# ==========================
+# 获取实时统计
+# ==========================
+@app.route('/get_realtime_stats', methods=['GET'])
+def get_realtime_stats():
+    # 计算实时专注率
+    total = real_time_stats["hand_up"] + real_time_stats["study_norm"] + real_time_stats["look_down"] + real_time_stats["abnormal"]
+    focus_rate = 100 * (real_time_stats["hand_up"] + real_time_stats["study_norm"]) / total if total > 0 else 0
+
+    return jsonify({
+        "stats": real_time_stats,
+        "focus_rate": round(focus_rate, 1),
+        "logs": real_time_logs[-10:]
+    })
+
+# ==========================
+# 获取录制状态
+# ==========================
+@app.route('/get_record_status', methods=['GET'])
+def get_record_status():
+    return jsonify({"recording": is_recording})
+
 # ========================
 # 实时流
 # ========================
 def generate_frames():
+    global last_capture_frame, video_writer
     camera = cv2.VideoCapture(video_source)
     tracker = BYTETracker(ByteTrackArgs())
     track_history = {}
@@ -91,8 +241,18 @@ def generate_frames():
         if not success:
             break
 
+        # 保存视频（如果正在录制）
+        if is_recording and video_writer:
+            video_writer.write(frame)
+
         results = model.predict(frame, imgsz=640, verbose=False, half=True, conf=0.25)
         det = results[0].boxes.data.cpu().numpy()
+
+        # 实时统计临时变量
+        rt_hand = 0
+        rt_study_norm = 0
+        rt_look_down = 0
+        rt_abnormal = 0
 
         if len(det) > 0:
             online_targets = tracker.update(det[:, :5], [frame.shape[0], frame.shape[1]], [frame.shape[0], frame.shape[1]])
@@ -122,6 +282,30 @@ def generate_frames():
                 color = get_color(best_cls)
                 cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
                 cv2.putText(frame, f"ID{tid} {final_label}", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+
+                # ======================
+                # 实时行为统计
+                # ======================
+                if final_label == "Raising-Hand":
+                    rt_hand += 1
+                elif final_label in ("Reading", "Writing"):
+                    rt_study_norm += 1
+                elif final_label == "Head-down":
+                    rt_look_down += 1
+                elif final_label in ("Useing-Phone", "Sleep"):
+                    rt_abnormal += 1
+
+        # 更新全局实时数据
+        if is_recording:
+            real_time_stats["hand_up"] = rt_hand
+            real_time_stats["study_norm"] = rt_study_norm
+            real_time_stats["look_down"] = rt_look_down
+            real_time_stats["abnormal"] = rt_abnormal
+
+            # 日志
+            now = time.strftime("%H:%M:%S")
+            log = f"[{now}] 举手:{rt_hand} 抬头:{rt_study_norm} 低头:{rt_look_down}"
+            real_time_logs.append(log)
 
         frame_display = cv2.resize(frame, (640, 480))
         ret, buffer = cv2.imencode('.jpg', frame_display, [cv2.IMWRITE_JPEG_QUALITY, 60])
@@ -158,9 +342,11 @@ def upload_video():
     if 'video' not in request.files:
         return jsonify({"error": "No video uploaded"}), 400
 
-    file = request.files['video']
-    unique_filename = f"{uuid.uuid4()}.mp4"
+    teacher_code = request.form.get('teacher_code')
+    class_id = request.form.get('class_id')
+    lesson_section = request.form.get('lesson_section')
 
+    file = request.files['video']
     CLASS_NAMES_EN = ["Raising-Hand", "Reading", "Writing", "Useing-Phone", "Head-down", "Sleep"]
     CLASS_NAMES_CN = ["举手", "看书", "写字", "使用手机", "低头做其他事情", "睡觉"]
 
@@ -180,10 +366,11 @@ def upload_video():
             width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
             height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
             fps = cap.get(cv2.CAP_PROP_FPS) or 25
-            fourcc = cv2.VideoWriter_fourcc(*'avc1')
+
+            # ✅ 修复编码器
+            fourcc = cv2.VideoWriter_fourcc(*'avc1')  # 使用更通用的编码器
             out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-            # ✅ tracker 只创建一次
             tracker = BYTETracker(ByteTrackArgs())
             track_history = {}
 
@@ -195,12 +382,10 @@ def upload_video():
 
                 results = model.predict(frame, verbose=False, conf=0.25)
                 det = results[0].boxes.data.cpu().numpy()
-
                 curr_distract_count = 0
 
                 if len(det) > 0:
                     online_targets = tracker.update(det[:, :5], [height, width], [height, width])
-
                     for t in online_targets:
                         tlbr = t.tlbr
                         tid = t.track_id
@@ -218,7 +403,6 @@ def upload_video():
                                 min_dist = dist
                                 best_cls = int(d[5])
 
-                        # ✅ 统计分心人数（移到正确位置）
                         curr_label_en = results[0].names[best_cls]
                         if curr_label_en in DISTRACT_BEHAVIOR:
                             curr_distract_count += 1
@@ -242,7 +426,6 @@ def upload_video():
                             time.strftime("%Y-%m-%d %H:%M:%S")
                         ])
 
-                    # ✅ 全局关键帧（正确位置）
                     global last_capture_frame
                     if (frame_count - last_capture_frame >= KEY_FRAME_INTERVAL and
                         curr_distract_count >= GLOBAL_DISTRACT_NUM):
@@ -250,7 +433,6 @@ def upload_video():
                         key_frame_path = os.path.join(KEY_FRAME_SAVE_DIR, key_frame_name)
                         cv2.imwrite(key_frame_path, frame)
                         last_capture_frame = frame_count
-                        print(f"✅ 全局关键帧：{key_frame_name}")
 
                 out.write(frame)
 
@@ -259,41 +441,121 @@ def upload_video():
 
             with open(csv_path, 'w', newline='', encoding='utf-8') as f:
                 writer = csv.writer(f)
-                writer.writerow(['frame_id', 'student_id', 'behavior_label', 'confidence', 'cx', 'cy', 'timestamp'])
+                writer.writerow(['frame_id','student_id','behavior_label','confidence','cx','cy','timestamp'])
                 writer.writerows(behavior_data)
 
             statistics = {
-                "video_id": unique_filename,
                 "total_frames": frame_count,
                 "behavior_counts": total_count,
-                "class_names": CLASS_NAMES_CN,
                 "analyze_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
-
-            with open(json_path, "w", encoding="utf-8") as f:
+            with open(json_path, 'w', encoding='utf-8') as f:
                 json.dump(statistics, f, ensure_ascii=False, indent=2)
 
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            uid = uuid.uuid4().hex[:6]
-            video_object = f"processed/{timestamp}_video_{uid}.mp4"
-            json_object = f"statistics/{timestamp}_stats_{uid}.json"
-            csv_object = f"tracks/{timestamp}_track_{uid}.csv"
+            time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+            base = f"teacher_{teacher_code}/class_{class_id}/{time_str}_{lesson_section}"
 
-            minio_client.fput_object(BUCKET_NAME, video_object, output_path, content_type="video/mp4")
-            minio_client.fput_object(BUCKET_NAME, json_object, json_path, content_type="application/json")
-            minio_client.fput_object(BUCKET_NAME, csv_object, csv_path, content_type="text/csv")
+            video_obj = f"{base}/output.mp4"
+            json_obj = f"{base}/stats.json"
+            csv_obj = f"{base}/tracks.csv"
 
-            video_url = minio_client.get_presigned_url("GET", BUCKET_NAME, video_object)
+            # ✅ 安全上传
+            try:
+                minio_client.fput_object(BUCKET_NAME, video_obj, output_path)
+                minio_client.fput_object(BUCKET_NAME, json_obj, json_path)
+                minio_client.fput_object(BUCKET_NAME, csv_obj, csv_path)
+            except Exception as e:
+                print("MINIO UPLOAD ERROR:", e)
+
+            # ✅ 安全写数据库
+            try:
+                cursor = db.cursor()
+                # 🔥 把 class_id 转成 int ！！！
+                class_id_int = int(class_id)
+                
+                report_code = f"R{datetime.now().strftime('%Y%m%d%H%M%S')}"
+                
+                cursor.execute("""
+                    INSERT INTO course_reports
+                    (report_code, teacher_code, class_id, lesson_section, 
+                    minio_video_path, minio_json_path, minio_csv_path)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s)
+                """, (report_code, teacher_code, class_id_int, lesson_section,
+                    video_obj, json_obj, csv_obj))
+                
+                db.commit()
+                cursor.close()  # 必加
+                print("✅ 数据库插入成功")
+            except Exception as e:
+                print("❌ DB ERROR:", e)  # 这个会在控制台打印真实错误
 
             return jsonify({
                 "status": "success",
-                "video_url": video_url,
-                "statistics": statistics,
-                "msg": "分析完成"
+                "statistics": statistics
             })
 
     except Exception as e:
-        print(f"ERROR: {e}")
+        print("FINAL ERROR:", e)  # 🔥 这里会打印真实错误
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/teacher/reports", methods=["GET"])
+def teacher_reports():
+    teacher_code = request.args.get("teacher_code")
+    if not teacher_code:
+        return jsonify([])
+
+    # 🔥 每次请求都 NEW 一个数据库连接！！！
+    db_temp = pymysql.connect(
+        host="localhost",
+        user="root",
+        password="password123",
+        database="user_center_db",
+        charset='utf8mb4'
+    )
+
+    cursor = db_temp.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("""
+        SELECT cr.*, c.class_name 
+        FROM course_reports cr
+        JOIN classes c ON cr.class_id = c.id
+        WHERE cr.teacher_code = %s
+        ORDER BY cr.created_at DESC
+    """, (teacher_code,))
+    
+    data = cursor.fetchall()
+
+    # 🔥 用完立即关闭！
+    cursor.close()
+    db_temp.close()
+
+    # 禁用缓存
+    response = jsonify(data)
+    response.headers["Cache-Control"] = "no-cache, no-store, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
+    response.headers["Expires"] = "0"
+    return response
+
+# ========================
+# ✅ 获取单节课详细分析
+# ========================
+@app.route("/api/report/detail", methods=["GET"])
+def report_detail():
+    try:
+        report_id = request.args.get("id")
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT * FROM course_reports WHERE id=%s", (report_id,))
+        report = cursor.fetchone()
+        cursor.close()
+
+        data = minio_client.get_object(BUCKET_NAME, report['minio_json_path'])
+        stats = json.loads(data.data)
+
+        return jsonify({
+            "report": report,
+            "statistics": stats
+        })
+    except Exception as e:
+        print("DETAIL ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/list_videos', methods=['GET'])
@@ -347,6 +609,12 @@ def get_ai_advice():
         "summary": "学生课堂专注度良好，存在偶尔低头、使用手机现象，需加强引导。",
         "advice": "1. 控制电子产品使用\n2. 家校共同监督课堂状态\n3. 鼓励积极互动"
     })
+
+@app.route('/get_video_url', methods=['GET'])
+def get_video_url():
+    path = request.args.get('path')
+    url = minio_client.get_presigned_url("GET", BUCKET_NAME, path)
+    return jsonify(url)
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)

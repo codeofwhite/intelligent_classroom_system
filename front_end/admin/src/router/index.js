@@ -31,10 +31,10 @@ const routes = [
     meta: { title: '学生行为报告' }
   },
   {
-    path: '/analysis',
-    name: 'analysis',
+    path: '/analysis-detail',
+    name: 'analysis-detail',
     component: () => import('../views/AnalysisView.vue'),
-    meta: { title: '历史趋势分析' }
+    meta: { title: '课堂深度分析' }
   },
   {
     path: '/schedule',
