@@ -57,9 +57,13 @@
           <span>👥</span>
           班级成员
         </button>
-        <button class="quick-btn" @click="goToClassGroup">
-          <span>🏫</span>
-          班级信息
+        <button class="quick-btn" @click="goToAnalysis">
+          <span>📈</span>
+          历史趋势
+        </button>
+        <button class="quick-btn" @click="goToSchedule">
+          <span>📅</span>
+          课程安排
         </button>
         <button class="quick-btn" @click="goToReport">
           <span>📊</span>
@@ -127,6 +131,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import { useRouter } from 'vue-router'
 
 // 老师信息
 const teacherName = ref('')
@@ -188,11 +193,13 @@ onMounted(() => {
   loadTeacherData()
 })
 
-// 跳转
-const goToClass = () => alert('进入上课页面')
-const goToMember = () => alert('班级成员')
-const goToClassGroup = () => alert('班级信息')
-const goToReport = () => alert('报告管理')
+const router = useRouter()
+
+const goToClass = () => router.push('/videos')
+const goToAnalysis = () => router.push('/analysis') // 新增：历史趋势
+const goToSchedule = () => router.push('/schedule') // 新增：课程安排
+const goToMember = () => router.push({ name: 'members' })
+const goToReport = () => router.push('/reports')
 </script>
 
 <style scoped>
@@ -234,12 +241,29 @@ const goToReport = () => alert('报告管理')
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
 
-.stat-card.blue { border-left: 4px solid #1890ff; }
-.stat-card.green { border-left: 4px solid #52c41a; }
-.stat-card.orange { border-left: 4px solid #faad14; }
-.stat-card.red { border-left: 4px solid #f5222d; }
-.stat-card.purple { border-left: 4px solid #722ed1; }
-.stat-card.cyan { border-left: 4px solid #13c2c2; }
+.stat-card.blue {
+  border-left: 4px solid #1890ff;
+}
+
+.stat-card.green {
+  border-left: 4px solid #52c41a;
+}
+
+.stat-card.orange {
+  border-left: 4px solid #faad14;
+}
+
+.stat-card.red {
+  border-left: 4px solid #f5222d;
+}
+
+.stat-card.purple {
+  border-left: 4px solid #722ed1;
+}
+
+.stat-card.cyan {
+  border-left: 4px solid #13c2c2;
+}
 
 .stat-card .label {
   color: #666;
@@ -272,7 +296,7 @@ const goToReport = () => alert('报告管理')
 
 .quick-grid {
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   gap: 16px;
 }
 
@@ -367,6 +391,7 @@ const goToReport = () => alert('报告管理')
   border-radius: 4px;
   font-size: 12px;
 }
+
 .status.done {
   background: #f6ffed;
   color: #52c41a;

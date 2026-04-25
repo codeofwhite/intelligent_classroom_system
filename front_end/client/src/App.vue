@@ -31,8 +31,8 @@
           </template>
 
           <template v-if="userRole === 'parent'">
-            <router-link to="/child-report" class="menu-item">👶 孩子课堂报告</router-link>
-            <router-link to="/parent-suggest" class="menu-item">🏠 家校共育建议</router-link>
+            <router-link to="/report" class="menu-item">👶 孩子课堂报告</router-link>
+            <router-link to="/suggest" class="menu-item">🏠 家校共育建议</router-link>
           </template>
         </div>
 

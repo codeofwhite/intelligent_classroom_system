@@ -9,14 +9,8 @@
     <div class="card">
       <h3>📂 上传视频进行分析</h3>
       <div class="upload-area">
-        <input
-          type="file"
-          ref="videoInput"
-          @change="onFileChange"
-          accept="video/*"
-        />
+        <input type="file" ref="videoInput" @change="onFileChange" accept="video/*" />
 
-        <!-- 模型选择（自动从后端获取） -->
         <select v-model="selectedModel" class="model-select" @change="switchModel" :disabled="switching">
           <option v-for="model in modelOptions" :key="model" :value="model">
             {{ model }}
@@ -26,39 +20,36 @@
         <button @click="startAnalysis" :disabled="loading || switching" class="btn-primary">
           {{ loading ? "AI 分析中..." : "开始上传并分析" }}
         </button>
-        <span v-if="switching" style="color: #666; font-size:13px;">正在切换模型...</span>
       </div>
 
-      <!-- 结果回放 -->
-      <div v-if="resultUrl" class="result-section">
-        <h4>✅ 分析完成</h4>
-        <video :src="resultUrl" controls class="result-video" type="video/mp4" muted></video>
-        <p class="tip">文件已自动保存至云端存储</p>
+      <!-- 结果区域：只要有 视频 或 统计 就显示 -->
+      <div v-if="resultUrl || statistics" class="result-section">
+        <h4>✅ 分析结果</h4>
 
-        <!-- 学生行为列表 -->
-        <div class="student-behavior-wrapper" v-if="studentList.length > 0">
-          <h4>👥 本节课学生行为概览</h4>
-          <table class="student-table">
+        <!-- 视频：有 URL 才显示 -->
+        <video
+          v-if="resultUrl"
+          :src="resultUrl"
+          controls
+          class="result-video"
+          muted
+        ></video>
+
+        <!-- AI 行为统计 -->
+        <div v-if="statistics" class="stats-section">
+          <h4>📊 课堂行为统计（6 类）</h4>
+
+          <table class="behavior-table">
             <thead>
               <tr>
-                <th>姓名</th>
-                <th>抬头率</th>
-                <th>专注度</th>
-                <th>行为状态</th>
-                <th>操作</th>
+                <th>行为类别</th>
+                <th>出现总次数</th>
               </tr>
             </thead>
             <tbody>
-              <tr v-for="stu in studentList" :key="stu.id">
-                <td>{{ stu.name }}</td>
-                <td>{{ stu.headUp }}%</td>
-                <td>{{ stu.focus }}%</td>
-                <td>{{ stu.status }}</td>
-                <td>
-                  <button class="report-btn" @click="goToReport(stu.id)">
-                    查看行为报告
-                  </button>
-                </td>
+              <tr v-for="(count, name) in statistics.behavior_counts" :key="name">
+                <td>{{ name }}</td>
+                <td>{{ count }}</td>
               </tr>
             </tbody>
           </table>
@@ -76,15 +67,15 @@
       <div class="video-grid">
         <div v-for="video in videoList" :key="video.name" class="video-card">
           <p class="time">{{ video.time }}</p>
-          <video :src="video.url" controls type="video/mp4" muted></video>
+          <video :src="video.url" controls muted></video>
           <p class="name">{{ video.name }}</p>
-          <button class="small-btn" @click="goToReportByVideo(video.id)">
-            查看全班报告
+
+          <!-- ✅ 查看历史结果（同时加载视频 + 统计） -->
+          <button class="small-btn" @click="loadHistoryStats(video)">
+            查看分析结果
           </button>
         </div>
-        <div v-if="videoList.length === 0" class="empty">
-          暂无历史记录
-        </div>
+        <div v-if="videoList.length === 0" class="empty">暂无历史记录</div>
       </div>
     </div>
   </div>
@@ -93,9 +84,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
-import { useRouter } from 'vue-router'
 
-const router = useRouter()
 const videoInput = ref(null)
 const videoFile = ref(null)
 const loading = ref(false)
@@ -103,11 +92,12 @@ const switching = ref(false)
 const resultUrl = ref('')
 const videoList = ref([])
 
-// 模型相关（自动从后端获取）
+const statistics = ref(null)
+const jsonUrl = ref('')
+
 const modelOptions = ref([])
 const selectedModel = ref('')
 
-// 模拟学生行为数据
 const studentList = ref([
   { id: 101, name: '张小明', headUp: 96, focus: 92, status: '正常' },
   { id: 102, name: '李华', headUp: 88, focus: 85, status: '偶尔走神' },
@@ -115,27 +105,20 @@ const studentList = ref([
   { id: 104, name: '刘芳', headUp: 98, focus: 95, status: '优秀' },
 ])
 
-// 选择文件
 function onFileChange(e) {
   videoFile.value = e.target.files[0]
 }
 
-// ======================
-// 从后端获取模型列表
-// ======================
 async function fetchModels() {
   try {
     const res = await axios.get('http://localhost:5002/get_models')
     modelOptions.value = res.data.models
     selectedModel.value = res.data.current
   } catch (err) {
-    console.error('获取模型列表失败')
+    console.error('获取模型失败')
   }
 }
 
-// ======================
-// 切换模型
-// ======================
 async function switchModel() {
   if (!selectedModel.value) return
   switching.value = true
@@ -143,23 +126,18 @@ async function switchModel() {
     await axios.post('http://localhost:5002/switch_model', {
       model_name: selectedModel.value
     })
-    console.log('模型切换成功:', selectedModel.value)
   } catch (err) {
-    alert('模型切换失败')
+    alert('切换失败')
   } finally {
     switching.value = false
   }
 }
 
-// ======================
-// 上传视频 + 分析
-// ======================
 async function startAnalysis() {
   if (!videoFile.value) {
     alert('请选择视频')
     return
   }
-
   loading.value = true
   const formData = new FormData()
   formData.append('video', videoFile.value)
@@ -167,16 +145,14 @@ async function startAnalysis() {
   try {
     const res = await axios.post('http://localhost:5002/upload_video', formData)
     resultUrl.value = res.data.video_url
+    statistics.value = res.data.statistics
   } catch (err) {
-    alert('分析失败，请检查后端服务')
+    alert('分析失败')
   } finally {
     loading.value = false
   }
 }
 
-// ======================
-// 获取历史记录
-// ======================
 async function fetchVideoList() {
   try {
     const res = await axios.get('http://localhost:5002/list_videos')
@@ -186,19 +162,27 @@ async function fetchVideoList() {
   }
 }
 
-// 跳转到报告页
-function goToReport(studentId) {
-  router.push({
-    path: '/student-report',
-    query: { studentId }
-  })
+
+async function loadHistoryStats(video) {
+  try {
+    const videoName = video.name
+    const videoUrl = video.url
+
+    // 构造统计文件名
+    const statName = videoName.replace('video_', 'stats_').replace('.mp4', '.json')
+    const res = await axios.get(`http://localhost:5002/get_history_stat/${statName}`)
+
+    // ✅ 同时赋值：视频 + 统计
+    resultUrl.value = videoUrl
+    statistics.value = res.data
+
+    alert('已加载历史分析结果！')
+  } catch (e) {
+    alert('暂无该视频的统计数据')
+    console.error(e)
+  }
 }
 
-function goToReportByVideo(videoId) {
-  router.push({ path: '/student-report', query: { videoId } })
-}
-
-// 页面加载时获取模型和历史记录
 onMounted(() => {
   fetchModels()
   fetchVideoList()
@@ -210,9 +194,9 @@ onMounted(() => {
   max-width: 1200px;
   margin: 0 auto;
   padding: 30px 20px;
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   background: #f7f9fc;
   min-height: 100vh;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 .header {
@@ -222,7 +206,6 @@ onMounted(() => {
 .header h2 {
   font-size: 24px;
   color: #222;
-  margin-bottom: 8px;
 }
 .header p {
   color: #666;
@@ -236,12 +219,6 @@ onMounted(() => {
   margin-bottom: 30px;
   box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
-.card h3 {
-  margin-top: 0;
-  font-size: 18px;
-  color: #333;
-  margin-bottom: 18px;
-}
 
 .upload-area {
   display: flex;
@@ -254,12 +231,6 @@ onMounted(() => {
   padding: 8px 12px;
   border: 1px solid #ddd;
   border-radius: 8px;
-  outline: none;
-}
-
-input[type="file"] {
-  padding: 6px;
-  font-size: 14px;
 }
 
 .btn-primary {
@@ -269,11 +240,9 @@ input[type="file"] {
   padding: 10px 18px;
   border-radius: 8px;
   cursor: pointer;
-  font-size: 14px;
 }
 .btn-primary:disabled {
   background: #a0d9bc;
-  cursor: not-allowed;
 }
 
 .result-section {
@@ -287,36 +256,45 @@ input[type="file"] {
 .tip {
   font-size: 13px;
   color: #888;
-  margin-top: 8px;
 }
 
-.student-behavior-wrapper {
+.stats-section {
   margin-top: 24px;
   padding-top: 16px;
   border-top: 1px solid #eee;
 }
-.student-table {
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px;
+}
+.stat-card {
+  background: #f9fafb;
+  padding: 14px;
+  border-radius: 10px;
+  text-align: center;
+}
+.stat-card .label {
+  font-size: 13px;
+  color: #666;
+}
+.stat-card .num {
+  font-size: 22px;
+  font-weight: bold;
+  margin-top: 4px;
+}
+.behavior-table {
   width: 100%;
   border-collapse: collapse;
-  margin-top: 10px;
+  margin-top: 15px;
 }
-.student-table th,
-.student-table td {
+.behavior-table th, .behavior-table td {
+  border: 1px solid #eee;
   padding: 10px;
   text-align: center;
-  border: 1px solid #eee;
 }
-.student-table th {
+.behavior-table th {
   background: #f5f7fa;
-}
-.report-btn {
-  background: #1890ff;
-  color: white;
-  border: none;
-  padding: 4px 10px;
-  border-radius: 4px;
-  cursor: pointer;
-  font-size: 12px;
 }
 
 .history-header {
@@ -324,7 +302,6 @@ input[type="file"] {
   justify-content: space-between;
   align-items: center;
 }
-
 .btn-outline {
   border: 1px solid #42b983;
   color: #42b983;
@@ -332,16 +309,13 @@ input[type="file"] {
   padding: 6px 12px;
   border-radius: 6px;
   cursor: pointer;
-  font-size: 14px;
 }
 
 .video-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
   gap: 20px;
-  margin-top: 16px;
 }
-
 .video-card {
   border: 1px solid #eee;
   border-radius: 12px;
@@ -350,32 +324,21 @@ input[type="file"] {
 .video-card video {
   width: 100%;
   border-radius: 8px;
-  background: #000;
-}
-.video-card .time {
-  font-size: 12px;
-  color: #999;
-  margin: 0 0 6px 0;
-}
-.video-card .name {
-  font-size: 14px;
-  color: #333;
-  margin: 6px 0 0 0;
 }
 .small-btn {
   margin-top: 8px;
-  background: #f5f5f5;
-  border: 1px solid #ddd;
-  padding: 4px 8px;
+  width: 100%;
+  background: #e6f7ff;
+  border: 1px solid #91d5ff;
+  padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 13px;
 }
-
 .empty {
-  color: #999;
-  grid-column: 1 / -1;
   text-align: center;
+  color: #999;
   padding: 30px 0;
+  grid-column: 1/-1;
 }
 </style>

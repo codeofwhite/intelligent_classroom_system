@@ -15,7 +15,7 @@ const routes = [
   {
     path: '/videos',
     name: 'videos',
-    component: () => import('../views/VideosView.vue'), 
+    component: () => import('../views/VideosView.vue'),
     meta: { title: '课堂录像回放' }
   },
   {
@@ -29,6 +29,18 @@ const routes = [
     name: 'reports',
     component: () => import('../views/ReportsView.vue'),
     meta: { title: '学生行为报告' }
+  },
+  {
+    path: '/analysis',
+    name: 'analysis',
+    component: () => import('../views/AnalysisView.vue'),
+    meta: { title: '历史趋势分析' }
+  },
+  {
+    path: '/schedule',
+    name: 'schedule',
+    component: () => import('../views/ScheduleView.vue'),
+    meta: { title: '课程安排表' }
   }
 ]
 
