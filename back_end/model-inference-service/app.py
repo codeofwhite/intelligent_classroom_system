@@ -353,6 +353,10 @@ def upload_video():
     CLASS_NAMES_CN = ["举手", "看书", "写字", "使用手机", "低头做其他事情", "睡觉"]
 
     total_count = {cls: 0 for cls in CLASS_NAMES_CN}
+    
+    # 按照学生的 id 统计
+    student_behaviors = {}
+    
     frame_count = 0
     behavior_data = []
 
@@ -410,7 +414,15 @@ def upload_video():
                             curr_distract_count += 1
 
                         if 0 <= best_cls < len(CLASS_NAMES_CN):
+                            cn_name = CLASS_NAMES_CN[best_cls]
                             total_count[CLASS_NAMES_CN[best_cls]] += 1
+                            
+                            # ======================
+                            # 🔥 按学生单独统计
+                            # ======================
+                            if str(tid) not in student_behaviors:
+                                student_behaviors[str(tid)] = {c:0 for c in CLASS_NAMES_CN}
+                            student_behaviors[str(tid)][cn_name] += 1
 
                         label = results[0].names[best_cls]
                         if tid not in track_history:
@@ -449,6 +461,7 @@ def upload_video():
             statistics = {
                 "total_frames": frame_count,
                 "behavior_counts": total_count,
+                "student_behaviors": student_behaviors,  # 🔥 保存单人数据
                 "analyze_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
             }
             with open(json_path, 'w', encoding='utf-8') as f:
@@ -499,6 +512,41 @@ def upload_video():
     except Exception as e:
         print("FINAL ERROR:", e)  # 🔥 这里会打印真实错误
         return jsonify({"error": str(e)}), 500
+
+# 获取本节课所有学生的 track_id
+@app.route("/api/report/students", methods=["GET"])
+def get_report_students():
+    report_id = request.args.get("id")
+    try:
+        db_tmp = pymysql.connect(host="localhost", user="root", password="password123", database="user_center_db", charset='utf8mb4')
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT minio_json_path FROM course_reports WHERE id=%s", (report_id,))
+        report = cursor.fetchone()
+        cursor.close()
+        db_tmp.close()
+
+        data = minio_client.get_object(BUCKET_NAME, report['minio_json_path'])
+        stats = json.loads(data.data)
+        student_ids = list(stats.get("student_behaviors", {}).keys())
+        return jsonify({"student_ids": student_ids})
+    except:
+        return jsonify({"student_ids": []})
+    
+# 保存 track_id 和 student_id 的映射关系
+@app.route("/api/report/bind_student", methods=["POST"])
+def bind_student():
+    report_id = request.json.get("report_id")
+    track_id = request.json.get("track_id")
+    student_name = request.json.get("student_name")
+
+    db_tmp = pymysql.connect(host="localhost", user="root", password="password123", database="user_center_db", charset='utf8mb4')
+    cursor = db_tmp.cursor()
+    cursor.execute("INSERT INTO report_student_mapping (report_id, track_id, student_name) VALUES (%s,%s,%s)",
+        (report_id, track_id, student_name))
+    db_tmp.commit()
+    cursor.close()
+    db_tmp.close()
+    return jsonify({"status": "ok"})
 
 @app.route("/api/teacher/reports", methods=["GET"])
 def teacher_reports():
