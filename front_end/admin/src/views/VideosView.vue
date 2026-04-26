@@ -109,18 +109,26 @@ const teacherCode = ref('T2025001') // 登录后从用户信息取
 const reportList = ref([])
 const openGroups = ref({})
 
+// 🔥 固定班级映射：永远不乱
+const CLASS_MAP = {
+  1: "高一(1)班",
+  2: "高一(2)班",
+  3: "高一(3)班"
+}
+
 // 🔥 按【日期 + 班级】分组（卡片折叠面板）
 const dateClassGroups = computed(() => {
   const groups = {}
   reportList.value.forEach(r => {
     const date = r.created_at.split(' ')[0]
     const key = `${date}_${r.class_id}`
+    
     if (!groups[key]) {
       groups[key] = {
         key,
         date,
         classId: r.class_id,
-        className: r.class_name,
+        className: CLASS_MAP[r.class_id], // 👈 强制映射，不依赖后端
         list: [],
         open: openGroups.value[key] || false
       }
