@@ -28,6 +28,28 @@
       </div>
     </div>
 
+    <!-- ✅ AI 分析：按钮 + 加载 + MD渲染 + 展开/收起 -->
+    <div class="card">
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <h3>🤖 AI 智能课堂分析</h3>
+        <button @click="generateAI" :disabled="loading"
+          style="padding:8px 16px; background:#409eff; color:white; border:none; border-radius:8px;cursor:pointer">
+          {{ loading ? "生成中..." : "点击生成AI分析" }}
+        </button>
+      </div>
+
+      <div v-if="aiAnalysis" style="margin-top:16px;">
+        <div :style="{ maxHeight: showFull ? 'none' : '180px', overflow: 'hidden' }" class="ai-markdown"
+          v-html="renderMarkdown(aiAnalysis)">
+        </div>
+        <div style="text-align:right; margin-top:8px;">
+          <button @click="showFull = !showFull" style="color:#409eff; background:none; border:none;cursor:pointer">
+            {{ showFull ? "收起" : "展开更多" }}
+          </button>
+        </div>
+      </div>
+    </div>
+
     <!-- 行为表格 -->
     <div class="card">
       <h3>📋 详细行为统计</h3>
@@ -58,23 +80,56 @@ const report = ref({})
 const stats = ref({})
 const videoUrl = ref('')
 
+const aiAnalysis = ref('')
+const loading = ref(false)
+const showFull = ref(false)
+
 const pieRef = ref(null)
 const lineRef = ref(null)
 let pieChart = null
 let lineChart = null
 
-// 加载数据
+
+
+// 加载基础数据（不加载AI）
 async function loadDetail() {
   const res = await axios.get('http://localhost:5002/api/report/detail', {
     params: { id: reportId }
   })
   report.value = res.data.report
-  stats.value = res.data.statistics
+  stats.value = res.data.statistics || {}
+  aiAnalysis.value = res.data.ai_analysis || ''
 
   const u = await axios.get('http://localhost:5002/get_video_url', {
     params: { path: report.value.minio_video_path }
   })
   videoUrl.value = u.data
+}
+
+// ✅ 手动点击生成AI
+async function generateAI() {
+  loading.value = true
+  try {
+    const res = await axios.post('http://localhost:5002/api/generate_and_save_ai', {
+      id: reportId
+    })
+    aiAnalysis.value = res.data.ai_analysis
+  } finally {
+    loading.value = false
+  }
+}
+
+// ✅ 简单MD渲染（支持标题、列表、换行）
+function renderMarkdown(md) {
+  if (!md) return ''
+  let html = md
+    .replace(/\n/g, '<br>')
+    .replace(/### (.*?)(<br>|$)/g, '<h3>$1</h3>')
+    .replace(/## (.*?)(<br>|$)/g, '<h2>$1</h2>')
+    .replace(/# (.*?)(<br>|$)/g, '<h1>$1</h1>')
+    .replace(/\d+\. (.*?)(<br>|$)/g, '<div style="margin-left:16px">$1</div>')
+    .replace(/- (.*?)(<br>|$)/g, '<div style="margin-left:16px">$1</div>')
+  return html
 }
 
 // 初始化图表
@@ -86,6 +141,7 @@ function initCharts() {
 
 // 绘制图表
 function renderCharts() {
+  if (!pieChart || !lineChart) return
   const data = stats.value.behavior_counts || {}
   const pieData = []
   for (const name in data) {
@@ -172,9 +228,17 @@ watch(stats, () => {
   width: 100%;
   border-collapse: collapse;
 }
-.table th, .table td {
+
+.table th,
+.table td {
   border: 1px solid #eee;
   padding: 12px;
   text-align: center;
+}
+
+.ai-markdown {
+  line-height: 1.7;
+  font-size: 15px;
+  color: #333;
 }
 </style>

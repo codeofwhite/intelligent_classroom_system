@@ -8,11 +8,13 @@ import time
 import tempfile
 import pymysql
 from collections import deque
+from ai_agent import analyze_class_report
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from ultralytics import YOLO
 from minio import Minio
 from datetime import datetime
+import io
 
 db = pymysql.connect(
     host="localhost",
@@ -542,20 +544,94 @@ def teacher_reports():
 def report_detail():
     try:
         report_id = request.args.get("id")
-        cursor = db.cursor(pymysql.cursors.DictCursor)
-        cursor.execute("SELECT * FROM course_reports WHERE id=%s", (report_id,))
+
+        db_tmp = pymysql.connect(
+            host="localhost", user="root", password="password123", database="user_center_db", charset='utf8mb4'
+        )
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        
+        cursor.execute("""
+            SELECT cr.*, c.class_name 
+            FROM course_reports cr
+            JOIN classes c ON cr.class_id = c.id
+            WHERE cr.id=%s
+        """, (report_id,))
+        
         report = cursor.fetchone()
         cursor.close()
+        db_tmp.close()
 
         data = minio_client.get_object(BUCKET_NAME, report['minio_json_path'])
         stats = json.loads(data.data)
+        
+        ai_text = ""
+        try:
+            ai_path = report['minio_json_path'].replace("stats.json", "ai_report.md")
+            ai_obj = minio_client.get_object(BUCKET_NAME, ai_path)
+            ai_text = ai_obj.read().decode("utf-8")
+        except:
+            ai_text = ""
 
+        # ✅ 只返回基础数据，不生成AI
         return jsonify({
             "report": report,
-            "statistics": stats
+            "statistics": stats,
+            "ai_analysis": ai_text
         })
+
     except Exception as e:
         print("DETAIL ERROR:", e)
+        return jsonify({
+            "report": {},
+            "statistics": {},
+            "ai_analysis": ""
+        }), 500
+
+# ========================
+# ✅ 手动触发 AI 分析（点击才生成）
+# ========================
+@app.route("/api/generate_and_save_ai", methods=["POST"])
+def generate_and_save_ai():
+    try:
+        report_id = request.json.get("id")
+
+        # 1. 查报告
+        db_tmp = pymysql.connect(host="localhost", user="root", password="password123", database="user_center_db", charset='utf8mb4')
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT cr.*, c.class_name FROM course_reports cr
+            JOIN classes c ON cr.class_id = c.id WHERE cr.id=%s
+        """, (report_id,))
+        report = cursor.fetchone()
+        cursor.close()
+        db_tmp.close()
+
+        # 2. 读行为统计
+        data = minio_client.get_object(BUCKET_NAME, report['minio_json_path'])
+        stats = json.load(data)
+
+        # 3. 生成 AI
+        from ai_agent import analyze_class_report
+        ai_text = analyze_class_report(stats["behavior_counts"], {
+            "class_name": report["class_name"],
+            "lesson_section": report["lesson_section"],
+            "teacher_code": report["teacher_code"]
+        })
+
+        # 4. 保存到 MinIO
+        ai_path = report['minio_json_path'].replace("stats.json", "ai_report.md")
+        minio_client.put_object(
+            BUCKET_NAME,
+            ai_path,
+            io.BytesIO(ai_text.encode("utf-8")),
+            length=len(ai_text.encode("utf-8")),
+            content_type="text/markdown"
+        )
+
+        return jsonify({"ai_analysis": ai_text})
+
+    except Exception as e:
+        print("AI SAVE ERROR:", e)
         return jsonify({"error": str(e)}), 500
 
 @app.route('/list_videos', methods=['GET'])
