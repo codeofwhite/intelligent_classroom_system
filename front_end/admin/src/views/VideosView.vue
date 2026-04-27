@@ -122,7 +122,7 @@ const dateClassGroups = computed(() => {
   reportList.value.forEach(r => {
     const date = r.created_at.split(' ')[0]
     const key = `${date}_${r.class_id}`
-    
+
     if (!groups[key]) {
       groups[key] = {
         key,

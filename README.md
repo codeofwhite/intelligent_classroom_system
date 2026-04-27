@@ -42,3 +42,11 @@
 # 导出 OpenVINO 格式以优化在 Intel 处理器上的推理性能
 yolo export model=yolov8n.pt format=openvino imgsz=640 half=True
 ```
+
+---
+
+## 智能交互 Agent 模块
+系统搭载双范式AI智能体，兼顾自动化分析与交互式问答：
+
+1. 任务驱动型报告Agent：根据课堂行为检测结果、关键帧图像与课程信息，自动生成结构化课堂综合分析报告，用于课后批量归档与教学评估。
+2. LLM 交互式对话Agent（Function Calling）：基于通义千问大模型实现原生工具调用能力，内置数据库查询、课堂详情读取两类工具。

@@ -7,10 +7,8 @@
       <div>班级：{{ report.class_name }}</div>
       <div>节次：{{ report.lesson_section }}</div>
       <div>总帧数：{{ stats.total_frames || 0 }}</div>
-      <button 
-        @click="openBindPopup" 
-        style="padding:8px 16px; background:#ff9800; color:white; border:none; border-radius:8px;cursor:pointer"
-      >
+      <button @click="openBindPopup"
+        style="padding:8px 16px; background:#ff9800; color:white; border:none; border-radius:8px;cursor:pointer">
         👤 学生身份绑定
       </button>
     </div>
@@ -72,22 +70,21 @@
     </div>
 
     <!-- 🔥 学生身份绑定弹窗 -->
-    <div v-if="showBindPopup" style="position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:9999;">
+    <div v-if="showBindPopup"
+      style="position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:9999;">
       <div style="background:white; padding:24px; border-radius:12px; width:420px;">
         <h3 style="margin-top:0;">👤 绑定学生身份</h3>
         <div v-for="sid in studentIds" :key="sid" style="margin:12px 0;">
           <label style="font-weight:bold;">追踪 ID：{{ sid }}</label>
-          <input 
-            v-model="bindForm[sid]" 
-            placeholder="请输入学生姓名"
-            style="width:100%; padding:10px; margin-top:6px; border:1px solid #ddd; border-radius:8px;"
-          >
+          <input v-model="bindForm[sid]" placeholder="请输入学生姓名"
+            style="width:100%; padding:10px; margin-top:6px; border:1px solid #ddd; border-radius:8px;">
         </div>
         <div style="text-align:right; margin-top:20px;">
-          <button @click="saveStudentBind" style="padding:8px 16px; background:#409eff; color:white; border:none; border-radius:8px; margin-right:8px;">
+          <button @click="saveStudentBind"
+            style="padding:8px 16px; background:#409eff; color:white; border:none; border-radius:8px; margin-right:8px;">
             保存绑定
           </button>
-          <button @click="showBindPopup=false" style="padding:8px 16px; border:1px solid #ddd; border-radius:8px;">
+          <button @click="showBindPopup = false" style="padding:8px 16px; border:1px solid #ddd; border-radius:8px;">
             取消
           </button>
         </div>

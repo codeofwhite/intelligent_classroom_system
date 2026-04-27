@@ -12,13 +12,8 @@
     <div class="student-list">
       <h4>选择学生</h4>
       <div class="grid">
-        <button
-          v-for="s in studentList"
-          :key="s.student_id"
-          class="student-btn"
-          :class="{ active: selectedStudent?.student_id === s.student_id }"
-          @click="selectStudent(s)"
-        >
+        <button v-for="s in studentList" :key="s.student_id" class="student-btn"
+          :class="{ active: selectedStudent?.student_id === s.student_id }" @click="selectStudent(s)">
           {{ s.student_name }}（{{ s.gender }}）
         </button>
       </div>
@@ -76,7 +71,7 @@ const today = ref('')
 // 日期
 const getDate = () => {
   const d = new Date()
-  return `${d.getFullYear()}-${d.getMonth()+1}-${d.getDate()}`
+  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
 }
 
 // 加载学生
@@ -205,9 +200,20 @@ onMounted(() => {
   cursor: pointer;
 }
 
-.btn.save { background: #1890ff; color: #fff; }
-.btn.push { background: #52c41a; color: #fff; }
-.btn.ai { background: #722ed1; color: #fff; }
+.btn.save {
+  background: #1890ff;
+  color: #fff;
+}
+
+.btn.push {
+  background: #52c41a;
+  color: #fff;
+}
+
+.btn.ai {
+  background: #722ed1;
+  color: #fff;
+}
 
 .empty {
   padding: 40px;

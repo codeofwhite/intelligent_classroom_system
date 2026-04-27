@@ -77,7 +77,7 @@ onMounted(() => {
       const u = JSON.parse(user)
       isLoggedIn.value = true
       teacherName.value = u.name || '老师'
-    } catch (e) {}
+    } catch (e) { }
   } else {
     if (route.path !== '/login') {
       router.push('/login')
@@ -139,9 +139,11 @@ const handleLogout = () => {
   gap: 10px;
   background: #0f172a;
 }
+
 .logo {
   font-size: 22px;
 }
+
 .title {
   font-size: 17px;
   font-weight: 600;
@@ -151,6 +153,7 @@ const handleLogout = () => {
   flex: 1;
   padding: 12px 0;
 }
+
 .menu-item {
   display: flex;
   align-items: center;
@@ -162,11 +165,13 @@ const handleLogout = () => {
   text-decoration: none;
   transition: all 0.25s ease;
 }
+
 .menu-item .icon {
   font-size: 18px;
   width: 20px;
   text-align: center;
 }
+
 .menu-item .label {
   font-size: 14px;
 }
@@ -175,6 +180,7 @@ const handleLogout = () => {
   background: #334155;
   color: #fff;
 }
+
 .router-link-active {
   background: #2563eb;
   color: #fff;
@@ -185,6 +191,7 @@ const handleLogout = () => {
   padding: 16px;
   border-top: 1px solid #334155;
 }
+
 .logout-btn {
   width: 100%;
   padding: 10px;
@@ -196,6 +203,7 @@ const handleLogout = () => {
   font-size: 14px;
   transition: 0.2s;
 }
+
 .logout-btn:hover {
   background: #ef4444;
   color: #fff;
@@ -224,6 +232,7 @@ const handleLogout = () => {
   font-size: 14px;
   color: #64748b;
 }
+
 .breadcrumb span {
   color: #2563eb;
   font-weight: 500;
@@ -235,6 +244,7 @@ const handleLogout = () => {
   gap: 14px;
   font-size: 14px;
 }
+
 .avatar {
   width: 32px;
   height: 32px;

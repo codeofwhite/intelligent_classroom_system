@@ -17,22 +17,12 @@
           <form @submit.prevent="handleLogin">
             <div class="form-item">
               <label>工号/手机号</label>
-              <input 
-                v-model="loginForm.username" 
-                type="text" 
-                placeholder="请输入您的教职工号" 
-                required
-              />
+              <input v-model="loginForm.username" type="text" placeholder="请输入您的教职工号" required />
             </div>
 
             <div class="form-item">
               <label>登录密码</label>
-              <input 
-                v-model="loginForm.password" 
-                type="password" 
-                placeholder="请输入密码" 
-                required
-              />
+              <input v-model="loginForm.password" type="password" placeholder="请输入密码" required />
             </div>
 
             <button type="submit" class="login-submit-btn" :disabled="loading">
@@ -96,7 +86,7 @@ const handleLogin = async () => {
   background: white;
   border-radius: 12px;
   overflow: hidden;
-  box-shadow: 0 20px 50px rgba(0,0,0,0.1);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.1);
 }
 
 .login-left {
@@ -168,7 +158,7 @@ h2 {
 
 .form-item input:focus {
   border-color: #1890ff;
-  box-shadow: 0 0 0 2px rgba(24,144,255,0.2);
+  box-shadow: 0 0 0 2px rgba(24, 144, 255, 0.2);
 }
 
 .login-submit-btn {
