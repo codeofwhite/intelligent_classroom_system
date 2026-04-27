@@ -1,51 +1,197 @@
 import dashscope
+import json
+import os
+import time
+import requests
+from typing import Dict, Any
+
+# 短期：本次课堂会话记忆
+session_memory = []
+# 长期：班级课程记忆 key:class_id+course_name
+course_long_memory: Dict[str, list] = {}
 
 dashscope.api_key = "sk-06abd7a7eb514b3ebd611412f0dc3531"
 
-def analyze_class_report(behavior_data, class_info):
-    # ========== 这是标准 Agent，不是普通问答 ==========
-    system_prompt = """
-你是【课堂行为分析智能Agent】，具备专业的课堂分析能力。
-你必须严格按照4个步骤完成分析：
-1. 量化课堂行为数据
-2. 诊断学生状态与问题
-3. 分析原因
-4. 给出可落地的教学建议
+# 记忆写入
+def add_memory(content: str):
+    session_memory.append(content)
+    # 限制记忆长度，防止超长
+    if len(session_memory) > 10:
+        session_memory.pop(0)
 
-输出使用Markdown，分模块展示：
-- 课堂概况
-- 数据分析
-- 问题诊断
-- 教学建议
+# 获取拼接记忆
+def get_memory_context() -> str:
+    if not session_memory:
+        return "暂无本次课堂分析上下文记忆"
+    return "\n".join([f"【历史记录】{item}" for item in session_memory])
+
+# ========================
+# 工具定义
+# ========================
+def tool_get_yolo_data(behavior_data):
+    print("[工具] 正在获取 YOLO 行为统计...")
+    res = f"YOLO行为检测统计：\n{json.dumps(behavior_data, ensure_ascii=False, indent=2)}"
+    print("[工具] YOLO 数据获取完成 ✅")
+    return res
+
+def tool_vlm_image_analysis(image_path: str):
+    if not image_path or not os.path.exists(image_path):
+        print("[VLM] 未找到关键帧图片，跳过")
+        return "未检测到有效课堂关键帧图像"
+
+    print(f"[VLM] 正在分析图片：{image_path}")
+    try:
+        # 加全局超时限制
+        requests.adapters.DEFAULT_TIMEOUT = 12
+        messages = [
+            {
+                "role": "user",
+                "content": [
+                    {"type": "text", "text": "客观描述课堂画面，学生坐姿、专注状态、课堂纪律"},
+                    {"type": "image", "image": f"file://{image_path}"}
+                ]
+            }
+        ]
+        resp = dashscope.MultiModalConversation.call(model="qwen-vl-max", messages=messages)
+        
+        if not resp or not hasattr(resp, "output") or not resp.output.choices:
+            print("[VLM] 接口返回空数据")
+            return "VLM视觉分析无返回结果"
+        
+        content = resp.output.choices[0].message.content[0]['text']
+        print(f"[VLM] 分析完成：{content[:40]}...")
+        return f"VLM视觉画面分析：{content}"
+    
+    except Exception as e:
+        print(f"[VLM] 失败：{str(e)}")
+        return f"VLM图像分析失败：{str(e)}"
+
+def tool_get_course_info(course_name: str, class_name: str):
+    print("[工具] 获取课程信息...")
+    res = f"课程背景信息：班级{class_name}，当前授课课程：{course_name}，需结合学科特点评估课堂状态"
+    print("[工具] 课程信息获取完成 ✅")
+    return res
+
+def tool_dispatcher(behavior_data, frame_path, course_name, class_name):
+    print("\n========================================")
+    print("🤖 AGENT 开始调度所有工具...")
+    tool_res = []
+    tool_res.append(tool_get_yolo_data(behavior_data))
+    tool_res.append(tool_vlm_image_analysis(frame_path))
+    tool_res.append(tool_get_course_info(course_name, class_name))
+    print("🤖 AGENT 所有工具调用完成 ✅")
+    print("========================================\n")
+    return "\n\n".join(tool_res)
+
+# ========================
+# 双 Agent
+# ========================
+def perception_agent(tool_result: str, memory_ctx: str):
+    print("\n🧠 启动 PERCEPTION AGENT（感知层）...")
+    start = time.time()
+
+    system = """
+你是Perception Agent课堂感知智能体，只做客观事实提取，不主观评价。
+输入：YOLO行为数据、VLM画面描述、课程信息、历史记忆
+输出：客观课堂状态、学生行为分布、画面直观现象
 """
+    user = f"""
+【历史记忆上下文】
+{memory_ctx}
 
-    # 关键：把字典变成干净文本，不报错！
-    prompt = f"""
-【课堂信息】
-班级：{class_info['class_name']}
-节次：{class_info['lesson_section']}
+【工具返回全部数据】
+{tool_result}
 
-【学生行为统计】
-举手：{behavior_data['举手']}
-看书：{behavior_data['看书']}
-写字：{behavior_data['写字']}
-使用手机：{behavior_data['使用手机']}
-低头做其他事情：{behavior_data['低头做其他事情']}
-睡觉：{behavior_data['睡觉']}
-
-请以课堂分析Agent身份，完成完整课堂分析报告。
+请输出客观课堂感知摘要。
 """
-
-    response = dashscope.Generation.call(
+    resp = dashscope.Generation.call(
         model="qwen-max",
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": prompt}
-        ],
+        messages=[{"role":"system","content":system},{"role":"user","content":user}],
         result_format="message"
     )
+    res = resp.output.choices[0].message.content.strip()
+    add_memory(f"感知Agent输出：{res}")
 
-    try:
-        return response.output.choices[0].message.content.strip()
-    except:
-        return "AI 分析暂时不可用，请稍后再试。"
+    print(f"🧠 PERCEPTION AGENT 完成，耗时：{round(time.time()-start,1)}s ✅")
+    return res
+
+def conclusion_agent(perception_content: str, class_info: dict, course_name: str):
+    print("\n📝 启动 CONCLUSION AGENT（决策层）...")
+    start = time.time()
+
+    system = """
+你是Conclusion Agent课堂决策大脑，结合感知数据+课程场景做深度分析。
+必须完成：
+1. 课堂整体状态综合评估
+2. 分心行为占比与问题诊断
+3. 结合当前课程学科内容，分析课堂节奏、知识点讲解适配性
+4. 判断课堂互动是否不足、内容是否重复冗余
+5. 输出结构化Markdown专业报告+可落地教学改进建议
+"""
+    memory_ctx = get_memory_context()
+    user = f"""
+【班级基础信息】
+班级：{class_info['class_name']}
+上课节次：{class_info['lesson_section']}
+授课课程：{course_name}
+
+【历史记忆】
+{memory_ctx}
+
+【感知层客观结论】
+{perception_content}
+
+请输出完整标准化课堂Agent分析报告。
+"""
+    resp = dashscope.Generation.call(
+        model="qwen-max",
+        messages=[{"role":"system","content":system},{"role":"user","content":user}],
+        result_format="message"
+    )
+    final_report = resp.output.choices[0].message.content.strip()
+    add_memory(f"最终报告生成完成")
+
+    print(f"📝 CONCLUSION AGENT 完成，耗时：{round(time.time()-start,1)}s ✅")
+    return final_report
+
+# ========================
+# 总入口
+# ========================
+def analyze_class_report(
+    behavior_data,
+    class_info: dict,
+    course_name: str = "常规文化课",
+    frame_path: str = None
+):
+    print("\n" + "="*60)
+    print("🚀 课堂行为分析 AGENT 系统启动")
+    print("="*60)
+
+    total_start = time.time()
+
+    # 清空记忆
+    print("\n[1/5] 清空会话记忆...")
+    session_memory.clear()
+
+    # 调用工具
+    print("[2/5] 调度所有工具（YOLO + VLM + 课程信息）...")
+    tool_all_data = tool_dispatcher(behavior_data, frame_path, course_name, class_info["class_name"])
+
+    # 记忆上下文
+    print("[3/5] 加载历史记忆上下文...")
+    memory_ctx = get_memory_context()
+
+    # 感知Agent
+    print("[4/5] 启动感知智能体...")
+    perception_res = perception_agent(tool_all_data, memory_ctx)
+
+    # 决策Agent
+    print("[5/5] 启动决策智能体生成报告...")
+    final_report = conclusion_agent(perception_res, class_info, course_name)
+
+    # 结束
+    print("\n" + "="*60)
+    print(f"✅ AGENT 系统全部完成！总耗时：{round(time.time() - total_start, 1)} 秒")
+    print("="*60 + "\n")
+
+    return final_report

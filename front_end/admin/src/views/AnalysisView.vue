@@ -34,26 +34,6 @@
       </div>
     </div>
 
-    <!-- 🔥 每个学生独立行为统计 -->
-    <div class="card" v-if="stats.student_behaviors && Object.keys(stats.student_behaviors).length > 0">
-      <h3>👨‍🎓 单个学生行为统计</h3>
-      <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 16px;">
-        <div 
-          v-for="(data, tid) in stats.student_behaviors" 
-          :key="tid" 
-          style="border:1px solid #eee; padding:14px; border-radius:10px;"
-        >
-          <h4 style="margin:0 0 8px 0;">学生追踪 ID：{{ tid }}</h4>
-          <table style="width:100%; font-size:14px;">
-            <tr v-for="(val, name) in data" :key="name">
-              <td style="padding:4px 0;">{{ name }}</td>
-              <td style="text-align:right;">{{ val }}</td>
-            </tr>
-          </table>
-        </div>
-      </div>
-    </div>
-
     <!-- AI 分析 -->
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center;">

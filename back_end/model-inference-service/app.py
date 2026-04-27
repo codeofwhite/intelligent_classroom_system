@@ -660,11 +660,15 @@ def generate_and_save_ai():
 
         # 3. 生成 AI
         from ai_agent import analyze_class_report
-        ai_text = analyze_class_report(stats["behavior_counts"], {
-            "class_name": report["class_name"],
-            "lesson_section": report["lesson_section"],
-            "teacher_code": report["teacher_code"]
-        })
+        ai_text = analyze_class_report(
+            behavior_data=stats["behavior_counts"],
+            class_info={
+                "class_name": report["class_name"],
+                "lesson_section": report["lesson_section"]
+            },
+            course_name="高等人工智能 / 软件工程",   # 前端传参，可自定义
+            frame_path="key_frames/global_frame_30_distract_16.jpg"
+        )
 
         # 4. 保存到 MinIO
         ai_path = report['minio_json_path'].replace("stats.json", "ai_report.md")
