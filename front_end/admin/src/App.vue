@@ -30,6 +30,10 @@
             <i class="icon">📝</i>
             <span class="label">学生行为报告</span>
           </router-link>
+          <router-link to="/ai-chat" class="menu-item">
+            <i class="icon">🤖</i>
+            <span class="label">AI 课堂助手</span>
+          </router-link>
         </nav>
 
         <div class="sidebar-footer">

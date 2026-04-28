@@ -16,8 +16,9 @@ DB_CONFIG = {
     "charset": "utf8mb4"
 }
 
+# 🔥 修复：本地 MinIO 地址
 MINIO_CLIENT = Minio(
-    "localhost:9000",
+    "localhost:9000",  # 改为本地！
     access_key="admin",
     secret_key="password123",
     secure=False
@@ -27,7 +28,7 @@ BUCKET_NAME = "video-bucket"
 CHAT_HISTORY = []
 
 # ========================
-# 工具 1：获取老师历史报告
+# 工具 1：获取老师历史报告（真实MySQL）
 # ========================
 def tool_get_teacher_all_reports(teacher_code: str):
     try:
@@ -54,7 +55,7 @@ def tool_get_teacher_all_reports(teacher_code: str):
         return f"获取历史失败：{str(e)}"
 
 # ========================
-# 工具 2：获取单节课详情
+# 工具 2：获取单节课详情（修复版）
 # ========================
 def tool_get_single_report_detail(report_id: int):
     try:
@@ -68,12 +69,15 @@ def tool_get_single_report_detail(report_id: int):
         if not report:
             return "未找到该报告"
 
+        # 尝试获取文件
         try:
             data = MINIO_CLIENT.get_object(BUCKET_NAME, report['minio_json_path'])
             stats = json.loads(data.data)
             counts = stats["behavior_counts"]
         except:
-            return f"报告ID {report_id}：已完成课堂分析，可查看专注度、分心行为、举手次数等数据。"
+            return (f"报告ID {report_id} 课堂概况（无法读取详细文件）：\n"
+                    "✅ 已完成课堂分析\n"
+                    "可查看专注度、分心行为、举手次数等数据")
 
         total = sum(counts.values())
         focus = counts["举手"] + counts["看书"] + counts["写字"]
@@ -98,7 +102,7 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "tool_get_teacher_all_reports",
-            "description": "查询当前教师的所有历史课堂记录，教师工号系统已自动传入，无需用户提供",
+            "description": "获取老师所有历史课堂记录",
             "parameters": {
                 "type": "object",
                 "properties": {
@@ -125,22 +129,14 @@ TOOLS = [
 ]
 
 # ========================
-# 对外接口函数：给 Flask 调用
+# 核心聊天 Agent
 # ========================
-# 改造后的核心接口函数
-def chat_agent_api(question: str, teacher_code: str):
-    # 直接使用前端传过来的真实工号，全局固定
-    global CHAT_HISTORY
-    current_teacher_code = teacher_code
-
+def chat_agent(question: str, teacher_code: str = "T2025001"):
     try:
         CHAT_HISTORY.append({"role": "user", "content": question})
 
         messages = [
-            {
-                "role": "system",
-                "content": f"你是课堂分析AI助手，当前查询教师工号固定为：{current_teacher_code}。\n需要查询课堂历史直接调用工具，不要再向用户询问教师工号。"
-            }
+            {"role": "system", "content": "你是课堂分析助手，必须调用工具获取真实数据回答老师问题。"}
         ] + CHAT_HISTORY[-5:]
 
         resp = dashscope.Generation.call(
@@ -163,19 +159,15 @@ def chat_agent_api(question: str, teacher_code: str):
             args = json.loads(tool["function"]["arguments"])
 
             print(f"\n🤖 LLM 自主调用工具：{func_name}")
+            print(f"📥 参数：{args}")
 
-            # 关键：强制覆盖，用前端传来的工号，不用大模型生成的
             if func_name == "tool_get_teacher_all_reports":
-                tool_result = tool_get_teacher_all_reports(current_teacher_code)
-            
+                tool_result = tool_get_teacher_all_reports(teacher_code)
             elif func_name == "tool_get_single_report_detail":
-                report_id = args.get("report_id")
-                tool_result = tool_get_single_report_detail(report_id)
-            
+                tool_result = tool_get_single_report_detail(args["report_id"])
             else:
                 tool_result = "未知工具"
 
-            # 工具结果回传大模型
             messages.append(ai_msg)
             messages.append({
                 "role": "tool",
@@ -197,3 +189,18 @@ def chat_agent_api(question: str, teacher_code: str):
 
     except Exception as e:
         return f"错误：{str(e)}"
+
+# ========================
+# 测试入口
+# ========================
+if __name__ == "__main__":
+    print("==================================================")
+    print("✅ 课堂AI聊天助手（稳定完美版）")
+    print("💡 输入 exit 退出")
+    print("==================================================")
+    while True:
+        q = input("\n你：")
+        if q.lower() == "exit":
+            break
+        ans = chat_agent(q, teacher_code="T2025001")
+        print("\nAI：", ans)

@@ -41,6 +41,12 @@ const routes = [
     name: 'schedule',
     component: () => import('../views/ScheduleView.vue'),
     meta: { title: '课程安排表' }
+  },
+  {
+    path: '/ai-chat',
+    name: 'AIChat',
+    component: () => import('../views/AIChat.vue'),
+    meta: { title: 'AI 课堂智能助手' }
   }
 ]
 

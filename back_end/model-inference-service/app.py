@@ -13,6 +13,7 @@ from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from ultralytics import YOLO
 from minio import Minio
+from chat_agent import chat_agent_api, list_chat_sessions  
 from datetime import datetime
 import io
 
@@ -743,6 +744,23 @@ def get_video_url():
     path = request.args.get('path')
     url = minio_client.get_presigned_url("GET", BUCKET_NAME, path)
     return jsonify(url)
+
+@app.route('/api/chat', methods=['POST'])
+def api_chat():
+    data = request.json
+    question = data.get("question", "")
+    teacher_code = data.get("teacher_code", "")
+    session_messages = data.get("messages", None)  # 前端传历史消息
+
+    result = chat_agent_api(question, teacher_code, session_messages)
+    return jsonify(result)
+
+@app.route('/api/chat/sessions', methods=['POST'])
+def get_chat_sessions():
+    data = request.json
+    teacher_code = data.get("teacher_code", "")
+    sessions = list_chat_sessions(teacher_code)
+    return jsonify({"list": sessions})
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)
