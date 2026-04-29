@@ -24,8 +24,6 @@ MINIO_CLIENT = Minio(
 )
 BUCKET_NAME = "video-bucket"
 
-CHAT_HISTORY = []
-
 # ========================
 # 工具 1：获取老师历史报告
 # ========================
@@ -48,7 +46,7 @@ def tool_get_teacher_all_reports(teacher_code: str):
             return f"老师 {teacher_code} 暂无课堂记录"
 
         res = [f"报告ID:{row['id']} | 班级:{row['class_name']} | 课程:{row['lesson_section']} | 时间:{row['created_at']}"
-               for i, row in enumerate(rows)]
+               for row in rows]
         return f"您的历史课堂（共{len(rows)}节）：\n" + "\n".join(res)
     except Exception as e:
         return f"获取历史失败：{str(e)}"
@@ -70,7 +68,7 @@ def tool_get_single_report_detail(report_id: int):
 
         try:
             data = MINIO_CLIENT.get_object(BUCKET_NAME, report['minio_json_path'])
-            stats = json.loads(data.data)
+            stats = json.load(data.data)
             counts = stats["behavior_counts"]
         except:
             return f"报告ID {report_id}：已完成课堂分析，可查看专注度、分心行为、举手次数等数据。"
@@ -98,12 +96,10 @@ TOOLS = [
         "type": "function",
         "function": {
             "name": "tool_get_teacher_all_reports",
-            "description": "查询当前教师的所有历史课堂记录，教师工号系统已自动传入，无需用户提供",
+            "description": "查询当前教师的所有历史课堂记录，教师工号系统已自动传入",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "teacher_code": {"type": "string"}
-                },
+                "properties": {"teacher_code": {"type": "string"}},
                 "required": ["teacher_code"]
             }
         }
@@ -115,9 +111,7 @@ TOOLS = [
             "description": "根据报告ID获取单节课专注度、分心等详细数据",
             "parameters": {
                 "type": "object",
-                "properties": {
-                    "report_id": {"type": "integer"}
-                },
+                "properties": {"report_id": {"type": "integer"}},
                 "required": ["report_id"]
             }
         }
@@ -125,23 +119,70 @@ TOOLS = [
 ]
 
 # ========================
-# 对外接口函数：给 Flask 调用
+# MySQL 读写会话历史
 # ========================
-# 改造后的核心接口函数
-def chat_agent_api(question: str, teacher_code: str):
-    # 直接使用前端传过来的真实工号，全局固定
-    global CHAT_HISTORY
-    current_teacher_code = teacher_code
+def get_session_messages(teacher_code, session_id):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT messages FROM chat_sessions
+            WHERE teacher_code=%s AND session_id=%s
+        """, (teacher_code, session_id))
+        row = cursor.fetchone()
+        cursor.close()
+        db.close()
+        if row:
+            return json.loads(row["messages"])
+    except:
+        pass
+    return []
+
+def save_session_messages(teacher_code, session_id, title, messages):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor()
+        msg_json = json.dumps(messages, ensure_ascii=False)
+
+        cursor.execute("""
+            SELECT id FROM chat_sessions
+            WHERE teacher_code=%s AND session_id=%s
+        """, (teacher_code, session_id))
+        exists = cursor.fetchone()
+
+        if exists:
+            cursor.execute("""
+                UPDATE chat_sessions
+                SET messages=%s, title=%s, update_time=NOW()
+                WHERE teacher_code=%s AND session_id=%s
+            """, (msg_json, title, teacher_code, session_id))
+        else:
+            cursor.execute("""
+                INSERT INTO chat_sessions
+                (teacher_code, session_id, title, messages)
+                VALUES (%s, %s, %s, %s)
+            """, (teacher_code, session_id, title, msg_json))
+        db.commit()
+        cursor.close()
+        db.close()
+    except Exception as e:
+        print("保存会话失败", e)
+
+# ========================
+# 核心对话接口（MySQL持久化版）
+# ========================
+def chat_agent_api(question: str, teacher_code: str, session_id: str):
+    history = get_session_messages(teacher_code, session_id)
 
     try:
-        CHAT_HISTORY.append({"role": "user", "content": question})
+        history.append({"role": "user", "content": question})
 
         messages = [
             {
                 "role": "system",
-                "content": f"你是课堂分析AI助手，当前查询教师工号固定为：{current_teacher_code}。\n需要查询课堂历史直接调用工具，不要再向用户询问教师工号。"
+                "content": f"你是课堂分析AI助手，当前教师工号：{teacher_code}。直接调用工具，不要询问工号。"
             }
-        ] + CHAT_HISTORY[-5:]
+        ] + history[-6:]
 
         resp = dashscope.Generation.call(
             model="qwen-turbo",
@@ -162,20 +203,13 @@ def chat_agent_api(question: str, teacher_code: str):
             func_name = tool["function"]["name"]
             args = json.loads(tool["function"]["arguments"])
 
-            print(f"\n🤖 LLM 自主调用工具：{func_name}")
-
-            # 关键：强制覆盖，用前端传来的工号，不用大模型生成的
             if func_name == "tool_get_teacher_all_reports":
-                tool_result = tool_get_teacher_all_reports(current_teacher_code)
-            
+                tool_result = tool_get_teacher_all_reports(teacher_code)
             elif func_name == "tool_get_single_report_detail":
-                report_id = args.get("report_id")
-                tool_result = tool_get_single_report_detail(report_id)
-            
+                tool_result = tool_get_single_report_detail(args.get("report_id"))
             else:
                 tool_result = "未知工具"
 
-            # 工具结果回传大模型
             messages.append(ai_msg)
             messages.append({
                 "role": "tool",
@@ -192,8 +226,33 @@ def chat_agent_api(question: str, teacher_code: str):
         else:
             answer = ai_msg.get("content", "你好！我是课堂分析助手。")
 
-        CHAT_HISTORY.append({"role": "assistant", "content": answer})
+        history.append({"role": "assistant", "content": answer})
+
+        # 自动生成标题
+        title = question[:20] + "..." if len(question) > 20 else question
+        save_session_messages(teacher_code, session_id, title, history)
+
         return answer
 
     except Exception as e:
         return f"错误：{str(e)}"
+
+# ========================
+# 获取教师所有历史会话（给前端列表）
+# ========================
+def get_teacher_sessions(teacher_code):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT session_id, title, update_time
+            FROM chat_sessions
+            WHERE teacher_code=%s
+            ORDER BY update_time DESC
+        """, (teacher_code,))
+        rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+        return rows
+    except:
+        return []

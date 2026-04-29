@@ -13,7 +13,7 @@ from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
 from ultralytics import YOLO
 from minio import Minio
-from chat_agent import chat_agent_api, list_chat_sessions  
+from chat_agent import chat_agent_api, get_session_messages, get_teacher_sessions
 from datetime import datetime
 import io
 
@@ -745,22 +745,31 @@ def get_video_url():
     url = minio_client.get_presigned_url("GET", BUCKET_NAME, path)
     return jsonify(url)
 
+# 聊天接口
 @app.route('/api/chat', methods=['POST'])
 def api_chat():
     data = request.json
     question = data.get("question", "")
     teacher_code = data.get("teacher_code", "")
-    session_messages = data.get("messages", None)  # 前端传历史消息
+    session_id = data.get("session_id", "")
+    answer = chat_agent_api(question, teacher_code, session_id)
+    return jsonify({"answer": answer})
 
-    result = chat_agent_api(question, teacher_code, session_messages)
-    return jsonify(result)
-
+# 获取会话列表
 @app.route('/api/chat/sessions', methods=['POST'])
-def get_chat_sessions():
+def api_chat_sessions():
     data = request.json
     teacher_code = data.get("teacher_code", "")
-    sessions = list_chat_sessions(teacher_code)
-    return jsonify({"list": sessions})
+    sessions = get_teacher_sessions(teacher_code)
+    return jsonify({"sessions": sessions})
+
+@app.route('/api/chat/messages', methods=['POST'])
+def api_chat_messages():
+    data = request.json
+    teacher_code = data.get("teacher_code", "")
+    session_id = data.get("session_id", "")
+    messages = get_session_messages(teacher_code, session_id)
+    return jsonify({"messages": messages})
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)
