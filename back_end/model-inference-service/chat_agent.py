@@ -1,3 +1,5 @@
+from datetime import datetime, timedelta
+
 import dashscope
 import json
 import pymysql
@@ -89,6 +91,104 @@ def tool_get_single_report_detail(report_id: int):
         return f"获取课程详情失败：{str(e)}"
 
 # ========================
+# 工具 3：获取某班级所有学生列表 ✅ 连表查询版（完全匹配你的表）
+# ========================
+def tool_get_class_students(class_id: int):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT 
+                s.student_code, 
+                u.name, 
+                s.gender, 
+                s.age
+            FROM students s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.class_id = %s 
+            ORDER BY s.id
+        """, (class_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        if not rows:
+            return f"班级 {class_id} 暂无学生"
+
+        lines = []
+        for s in rows:
+            lines.append(f"学号:{s['student_code']} | 姓名:{s['name']} | 性别:{s['gender']} | 年龄:{s['age']}")
+        
+        return f"班级 {class_id} 学生列表（共{len(rows)}人）：\n" + "\n".join(lines)
+    except Exception as e:
+        return f"获取学生失败：{str(e)}"
+
+# ========================
+# 工具 4：按时间段查询课堂统计 ✅ NEW
+# ========================
+def tool_get_time_range_stats(teacher_code: str, time_type: str = "7d"):
+    try:
+        now = datetime.now()
+        if time_type == "7d":
+            start = now - timedelta(days=7)
+            title = "近7天"
+        elif time_type == "30d" or time_type == "month":
+            start = now - timedelta(days=30)
+            title = "近30天"
+        else:
+            return "仅支持 7d / 30d"
+
+        start_str = start.strftime("%Y-%m-%d 00:00:00")
+        end_str = now.strftime("%Y-%m-%d %H:%M:%S")
+
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT id, created_at, lesson_section, class_id 
+            FROM course_reports
+            WHERE teacher_code = %s AND created_at BETWEEN %s AND %s
+            ORDER BY created_at
+        """, (teacher_code, start_str, end_str))
+        rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        if not rows:
+            return f"{title} 无课堂记录"
+
+        res = [f"报告ID:{r['id']} | 节次:{r['lesson_section']} | 时间:{r['created_at']}" for r in rows]
+        return f"📊 {title} 课堂统计（共{len(rows)}节）：\n" + "\n".join(res)
+    except Exception as e:
+        return f"统计失败：{str(e)}"
+    
+# ========================
+# 工具 5：获取课堂关键帧预览图 ✅ NEW
+# ========================
+def tool_get_class_keyframe(report_id: int):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT minio_keyframe_path
+            FROM course_reports
+            WHERE id = %s
+        """, (report_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        db.close()
+
+        if not row or not row['minio_keyframe_path']:
+            return "该课堂暂无关键帧图片"
+
+        image_url = f"http://localhost:9000/{BUCKET_NAME}/{row['minio_keyframe_path']}"
+        return f"📷 报告ID {report_id} 课堂关键帧：\n{image_url}"
+
+    except Exception as e:
+        return f"获取关键帧失败：{str(e)}"
+    
+
+
+# ========================
 # 工具定义
 # ========================
 TOOLS = [
@@ -109,6 +209,45 @@ TOOLS = [
         "function": {
             "name": "tool_get_single_report_detail",
             "description": "根据报告ID获取单节课专注度、分心等详细数据",
+            "parameters": {
+                "type": "object",
+                "properties": {"report_id": {"type": "integer"}},
+                "required": ["report_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "tool_get_class_students",
+            "description": "根据班级ID获取该班级所有学生列表",
+            "parameters": {
+                "type": "object",
+                "properties": {"class_id": {"type": "integer"}},
+                "required": ["class_id"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "tool_get_time_range_stats",
+            "description": "查询教师近7天/近30天的课堂统计，time_type 只能是 7d 或 30d",
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "teacher_code": {"type": "string"},
+                    "time_type": {"type": "string"}
+                },
+                "required": ["teacher_code", "time_type"]
+            }
+        }
+    },
+    {
+        "type": "function",
+        "function": {
+            "name": "tool_get_class_keyframe",
+            "description": "根据报告ID获取课堂关键帧图片链接",
             "parameters": {
                 "type": "object",
                 "properties": {"report_id": {"type": "integer"}},
@@ -207,6 +346,12 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
                 tool_result = tool_get_teacher_all_reports(teacher_code)
             elif func_name == "tool_get_single_report_detail":
                 tool_result = tool_get_single_report_detail(args.get("report_id"))
+            elif func_name == "tool_get_class_students":
+                tool_result = tool_get_class_students(args.get("class_id"))
+            elif func_name == "tool_get_time_range_stats":
+                tool_result = tool_get_time_range_stats(teacher_code, args.get("time_type", "7d"))
+            elif func_name == "tool_get_class_keyframe":
+                tool_result = tool_get_class_keyframe(args.get("report_id"))
             else:
                 tool_result = "未知工具"
 

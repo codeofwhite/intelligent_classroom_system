@@ -33,3 +33,4 @@ __pycache__/
 remake-yolov5-slowfast-deepsort-PytorchVideo/slowfast_file/
 remake-yolov5-slowfast-deepsort-PytorchVideo/yolov5_file/
 "@ | Out-File -FilePath .gitignore -Append -Encoding utf8
+node_modules

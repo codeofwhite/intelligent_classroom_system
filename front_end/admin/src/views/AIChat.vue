@@ -23,7 +23,12 @@
     <div class="chat-container">
       <div class="chat-box" ref="chatBox">
         <div v-for="(msg, idx) in messages" :key="idx" class="msg" :class="msg.role">
-          <div class="bubble">{{ msg.content }}</div>
+          <!-- 🔥 宽松匹配图片链接 -->
+          <div v-if="isImageMsg(msg.content)" class="image-wrapper">
+            <img :src="getImageUrl(msg.content)" alt="课堂关键帧" />
+          </div>
+
+          <div v-else class="bubble">{{ msg.content }}</div>
         </div>
         <div v-if="loading" class="loading">AI 思考中...</div>
       </div>
@@ -63,6 +68,17 @@ onMounted(async () => {
     newChat()
   }
 })
+
+// 🔥 修复：判断是否包含图片链接（更宽松）
+function isImageMsg(content) {
+  return content && /https?:\/\/.*\.(jpg|jpeg|png)/i.test(content)
+}
+
+// 🔥 修复：提取 URL（正则更通用）
+function getImageUrl(content) {
+  const match = content.match(/https?:\/\/[^\s]+/i)
+  return match ? match[0] : ''
+}
 
 // 加载会话列表（从 MySQL）
 async function loadSessionList() {
@@ -244,6 +260,16 @@ function formatTime(timeStr) {
   border-radius: 12px;
   font-size: 14px;
   line-height: 1.4;
+}
+
+/* 图片样式 */
+.image-wrapper {
+  max-width: 300px;
+}
+.image-wrapper img {
+  width: 100%;
+  border-radius: 12px;
+  box-shadow: 0 1px 5px rgba(0,0,0,0.1);
 }
 
 .ai .bubble {

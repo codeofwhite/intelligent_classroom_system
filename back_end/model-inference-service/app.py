@@ -475,7 +475,31 @@ def upload_video():
             json_obj = f"{base}/stats.json"
             csv_obj = f"{base}/tracks.csv"
 
-            # ✅ 安全上传
+            # ======================
+            # 🔥 上传关键帧到 MINIO（我加的）
+            # ======================
+            key_frame_local_path = None
+            key_frame_minio_path = None
+
+            import glob
+            key_frames = glob.glob(os.path.join(KEY_FRAME_SAVE_DIR, f"global_frame_*.jpg"))
+            if key_frames:
+                # 取最新一张关键帧
+                key_frames.sort(reverse=True)
+                key_frame_local_path = key_frames[0]
+                key_frame_minio_path = f"{base}/keyframe.jpg"
+
+                try:
+                    minio_client.fput_object(
+                        BUCKET_NAME,
+                        key_frame_minio_path,
+                        key_frame_local_path
+                    )
+                    print("✅ 关键帧已上传 MinIO")
+                except Exception as e:
+                    print("❌ 关键帧上传失败", e)
+
+            # ✅ 安全上传视频、JSON、CSV
             try:
                 minio_client.fput_object(BUCKET_NAME, video_obj, output_path)
                 minio_client.fput_object(BUCKET_NAME, json_obj, json_path)
@@ -483,10 +507,9 @@ def upload_video():
             except Exception as e:
                 print("MINIO UPLOAD ERROR:", e)
 
-            # ✅ 安全写数据库
+            # ✅ 安全写数据库（加入关键帧路径）
             try:
                 cursor = db.cursor()
-                # 🔥 把 class_id 转成 int ！！！
                 class_id_int = int(class_id)
                 
                 report_code = f"R{datetime.now().strftime('%Y%m%d%H%M%S')}"
@@ -494,22 +517,23 @@ def upload_video():
                 cursor.execute("""
                     INSERT INTO course_reports
                     (report_code, teacher_code, class_id, lesson_section, 
-                    minio_video_path, minio_json_path, minio_csv_path)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s)
-                """, (report_code, teacher_code, class_id_int, lesson_section,
-                    video_obj, json_obj, csv_obj))
+                    minio_video_path, minio_json_path, minio_csv_path, minio_keyframe_path)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+                """, (
+                    report_code, teacher_code, class_id_int, lesson_section,
+                    video_obj, json_obj, csv_obj, key_frame_minio_path
+                ))
                 
                 db.commit()
-                cursor.close()  # 必加
-                print("✅ 数据库插入成功")
+                cursor.close()
+                print("✅ 数据库插入成功 + 关键帧已记录")
             except Exception as e:
-                print("❌ DB ERROR:", e)  # 这个会在控制台打印真实错误
+                print("❌ DB ERROR:", e)
 
             return jsonify({
                 "status": "success",
                 "statistics": statistics
             })
-
     except Exception as e:
         print("FINAL ERROR:", e)  # 🔥 这里会打印真实错误
         return jsonify({"error": str(e)}), 500
