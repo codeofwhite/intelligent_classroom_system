@@ -555,7 +555,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
 
                 # 追加到推理链，但**绝对不返回给前端**
                 messages.append(ai_msg)
-                messages.append({"role": "tool", "content": tool_result})
+                messages.append({"role": "tool", "content": tool_result, "name": func_name})
                 current_round += 1
                 continue
 
