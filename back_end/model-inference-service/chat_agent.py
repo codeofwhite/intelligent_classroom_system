@@ -162,7 +162,7 @@ def tool_get_time_range_stats(teacher_code: str, time_type: str = "7d"):
         return f"统计失败：{str(e)}"
     
 # ========================
-# 工具 5：获取课堂关键帧预览图 ✅ NEW
+# 工具 5：获取课堂关键帧
 # ========================
 def tool_get_class_keyframe(report_id: int):
     try:
@@ -180,8 +180,16 @@ def tool_get_class_keyframe(report_id: int):
         if not row or not row['minio_keyframe_path']:
             return "该课堂暂无关键帧图片"
 
-        image_url = f"http://localhost:9000/{BUCKET_NAME}/{row['minio_keyframe_path']}"
-        return f"📷 报告ID {report_id} 课堂关键帧：\n{image_url}"
+        # 🔥 修复：过期时间用 timedelta，不是 int！
+        from datetime import timedelta
+        url = MINIO_CLIENT.presigned_get_object(
+            BUCKET_NAME,
+            row['minio_keyframe_path'],
+            expires=timedelta(days=7)  # 这里改了！！！
+        )
+
+        url = url.replace("http://minio:9000", "http://localhost:9000")
+        return url
 
     except Exception as e:
         return f"获取关键帧失败：{str(e)}"
@@ -307,8 +315,9 @@ def save_session_messages(teacher_code, session_id, title, messages):
     except Exception as e:
         print("保存会话失败", e)
 
+
 # ========================
-# 核心对话接口（MySQL持久化版）
+# 核心对话接口
 # ========================
 def chat_agent_api(question: str, teacher_code: str, session_id: str):
     history = get_session_messages(teacher_code, session_id)
@@ -316,6 +325,20 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
     try:
         history.append({"role": "user", "content": question})
 
+        # 强制关键词识别：只要提 keyframe / 关键帧 / 图片，直接返回
+        q = question.lower()
+        if any(key in q for key in ["关键帧", "keyframe", "图片", "照片"]):
+            import re
+            match = re.search(r'报告?[id\s:]*(\d+)', question, re.I)
+            if match:
+                report_id = int(match.group(1))
+                url = tool_get_class_keyframe(report_id)
+                history.append({"role": "assistant", "content": url})
+                title = question[:20] + "..."
+                save_session_messages(teacher_code, session_id, title, history)
+                return url
+
+        # 正常对话逻辑
         messages = [
             {
                 "role": "system",
@@ -372,8 +395,6 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
             answer = ai_msg.get("content", "你好！我是课堂分析助手。")
 
         history.append({"role": "assistant", "content": answer})
-
-        # 自动生成标题
         title = question[:20] + "..." if len(question) > 20 else question
         save_session_messages(teacher_code, session_id, title, history)
 
