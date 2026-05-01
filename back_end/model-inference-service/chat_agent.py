@@ -321,40 +321,50 @@ def detect_user_intent(question: str) -> str:
     返回意图类型：
     query_history    - 查询个人历史课堂
     query_report      - 查询单节课详细报告/专注度/行为
-    query_class       - 查询班级整体统计/纪律
+    query_class       - 查询班级整体统计/纪律/人数/学生信息
     chat_chitchat     - 日常闲聊/问候
     other             - 无关问题、非业务请求
     """
     prompt = f"""
-请对用户问题做意图分类，只能严格返回下面其中一个标识，不要解释、不要多余文字：
-可选标识：
+你是一个意图分类助手，请智能理解用户问题，只返回分类标识，不要输出任何多余内容。
+
+可选标识（只能返回一个）：
 query_history
 query_report
 query_class
 chat_chitchat
 other
 
-规则：
-1. 问自己上过的课堂、历史记录、有哪些分析报告 → query_history
-2. 问某一节课专注度、课堂画面、行为统计、详细分析 → query_report
-3. 问整个班级整体纪律、整体表现、班级统计 → query_class
-4. 问候、打招呼、闲聊、你是谁、能干什么 → chat_chitchat
-5. 写作文、娱乐、生活琐事、与课堂分析完全无关 → other
+【宽松判断规则】
+1. query_history：只要涉及“我的课程、历史记录、上过的课、报告列表、有哪些课” → 归此类
+2. query_report：只要涉及“某节课、专注度、分心、行为统计、报告详情、关键帧、图片” → 归此类
+3. query_class：只要涉及“班级、学生、人数、名单、班级表现、纪律” → 归此类
+4. chat_chitchat：问候、打招呼、介绍自己、闲聊、简单对话 → 归此类
+5. other：与课堂分析、教学、学生、班级完全无关的内容 → 归此类
 
 用户问题：{question}
+请只返回标识：
     """
 
     resp = Generation.call(
         model='qwen-turbo',
-        messages=[{'role':'user','content':prompt}],
+        messages=[{'role': 'user', 'content': prompt}],
         result_format='text',
-        temperature=0.1
+        temperature=0.2  # 稍微提高一点，更灵活
     )
     intent = resp.output.text.strip()
-    # 兜底容错
-    if intent not in ["query_history","query_report","query_class","chat_chitchat","other"]:
-        return "other"
-    return intent
+    
+    # 超级宽松容错：只要包含关键词就算对
+    if "query_history" in intent:
+        return "query_history"
+    if "query_report" in intent:
+        return "query_report"
+    if "query_class" in intent:
+        return "query_class"
+    if "chat_chitchat" in intent:
+        return "chat_chitchat"
+    
+    return "other"
 
 # ========================
 # 核心对话接口
@@ -394,7 +404,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
         # ==============================
         # 多轮反思 + 链式调用 增强版
         # ==============================
-        system_prompt = f"""
+        base_prompt  = f"""
 你是课堂分析AI助手，教师工号：{teacher_code}。
 重要规则：
 1. 用户问「哪节课分心最严重、哪节专注率最高」这类对比问题：
@@ -405,7 +415,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
 3. 直到收集完足够数据、能给出明确对比答案再结束
 4. 不要让用户说得更具体，你自己主动分步查询补齐数据
         """.strip()
-
+        system_prompt = build_system_prompt_with_memory(teacher_code, base_prompt)
         messages = [{"role": "system", "content": system_prompt}] + history[-6:]
 
         max_round = 5   # 放宽到5轮，足够查列表+多节课详情
@@ -440,8 +450,10 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
                 tool_result = tool_get_teacher_all_reports(teacher_code)
             elif func_name == "tool_get_single_report_detail":
                 tool_result = tool_get_single_report_detail(args.get("report_id"))
+                update_teacher_long_memory(teacher_code, report_id=args.get("report_id"))
             elif func_name == "tool_get_class_students":
                 tool_result = tool_get_class_students(args.get("class_id"))
+                update_teacher_long_memory(teacher_code, class_id=args.get("class_id"))
             elif func_name == "tool_get_time_range_stats":
                 tool_result = tool_get_time_range_stats(teacher_code, args.get("time_type", "7d"))
             elif func_name == "tool_get_class_keyframe":
@@ -472,6 +484,70 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
 
     except Exception as e:
         return f"错误：{str(e)}"
+
+def get_teacher_long_memory(teacher_code: str):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT focus_class_ids, focus_report_ids, prefer_question_type
+            FROM teacher_long_memory WHERE teacher_code = %s
+        """, (teacher_code,))
+        row = cursor.fetchone()
+        cursor.close()
+        db.close()
+        if not row:
+            return {"focus_class_ids":"","focus_report_ids":"","prefer_question_type":""}
+        return row
+    except:
+        return {"focus_class_ids":"","focus_report_ids":"","prefer_question_type":""}
+    
+def update_teacher_long_memory(teacher_code: str, class_id=None, report_id=None, q_type=None):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+
+        # 先查原有
+        old = get_teacher_long_memory(teacher_code)
+        cls_list = old["focus_class_ids"].split(",") if old["focus_class_ids"] else []
+        rep_list = old["focus_report_ids"].split(",") if old["focus_report_ids"] else []
+
+        # 追加班级
+        if class_id and str(class_id) not in cls_list:
+            cls_list.append(str(class_id))
+        # 追加报告
+        if report_id and str(report_id) not in rep_list:
+            rep_list.append(str(report_id))
+
+        new_cls = ",".join(cls_list[:10])  # 最多存10个
+        new_rep = ",".join(rep_list[:10])
+        new_qtype = q_type if q_type else old["prefer_question_type"]
+
+        # 存在则更新，不存在则插入
+        cursor.execute("""
+            INSERT INTO teacher_long_memory
+            (teacher_code, focus_class_ids, focus_report_ids, prefer_question_type)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+            focus_class_ids=%s, focus_report_ids=%s, prefer_question_type=%s, update_time=NOW()
+        """, (teacher_code, new_cls, new_rep, new_qtype, new_cls, new_rep, new_qtype))
+
+        db.commit()
+        cursor.close()
+        db.close()
+    except Exception as e:
+        print("长期记忆更新失败", e)
+        
+def build_system_prompt_with_memory(teacher_code: str, base_prompt: str):
+    mem = get_teacher_long_memory(teacher_code)
+    extra = f"""
+【用户长期习惯记忆】
+常关注班级ID：{mem['focus_class_ids']}
+常查看报告ID：{mem['focus_report_ids']}
+偏好问题类型：{mem['prefer_question_type']}
+后续回答优先结合该老师常用班级、常用报告，贴合使用习惯。
+    """.strip()
+    return base_prompt + "\n" + extra
 
 # ========================
 # 获取教师所有历史会话（给前端列表）
