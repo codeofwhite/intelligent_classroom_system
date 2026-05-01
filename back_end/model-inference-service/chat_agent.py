@@ -363,9 +363,8 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
     history = get_session_messages(teacher_code, session_id)
 
     try:
-        
+        # 1. 意图识别（闲聊拦截）
         intent = detect_user_intent(question)
-        
         if intent in ["chat_chitchat", "other"]:
             if intent == "chat_chitchat":
                 answer = "😊 我是课堂分析AI助手，我可以帮你：\n• 查询历史课堂记录\n• 查询专注度/行为统计\n• 查看课堂关键帧画面\n• 分析班级表现"
@@ -377,10 +376,10 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
             title = question[:20] + "..." if len(question) > 20 else question
             save_session_messages(teacher_code, session_id, title, history)
             return answer
-        
+
         history.append({"role": "user", "content": question})
 
-        # 强制关键词识别：只要提 keyframe / 关键帧 / 图片，直接返回
+        # 2. 关键帧快捷识别
         q = question.lower()
         if any(key in q for key in ["关键帧", "keyframe", "图片", "照片"]):
             import re
@@ -389,36 +388,53 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
                 report_id = int(match.group(1))
                 url = tool_get_class_keyframe(report_id)
                 history.append({"role": "assistant", "content": url})
-                title = question[:20] + "..."
-                save_session_messages(teacher_code, session_id, title, history)
+                save_session_messages(teacher_code, session_id, question[:20] + "...", history)
                 return url
 
-        # 正常对话逻辑
-        messages = [
-            {
-                "role": "system",
-                "content": f"你是课堂分析AI助手，当前教师工号：{teacher_code}。直接调用工具，不要询问工号。"
-            }
-        ] + history[-6:]
+        # ==============================
+        # 多轮反思 + 链式调用 增强版
+        # ==============================
+        system_prompt = f"""
+你是课堂分析AI助手，教师工号：{teacher_code}。
+重要规则：
+1. 用户问「哪节课分心最严重、哪节专注率最高」这类对比问题：
+   第一步先调用 tool_get_teacher_all_reports 获取所有报告ID
+   第二步再逐个调用 tool_get_single_report_detail 查询每节课详情
+   第三步自己对比专注率、分心情况，给出明确结论
+2. 允许连续多轮工具调用，不要中途放弃
+3. 直到收集完足够数据、能给出明确对比答案再结束
+4. 不要让用户说得更具体，你自己主动分步查询补齐数据
+        """.strip()
 
-        resp = dashscope.Generation.call(
-            model="qwen-turbo",
-            messages=messages,
-            tools=TOOLS,
-            result_format="message"
-        )
+        messages = [{"role": "system", "content": system_prompt}] + history[-6:]
 
-        output = resp.get("output", {})
-        choices = output.get("choices", [])
-        if not choices:
-            return "AI 暂时无法回答"
+        max_round = 5   # 放宽到5轮，足够查列表+多节课详情
+        current_round = 0
+        answer = ""
 
-        ai_msg = choices[0]["message"]
+        while current_round < max_round:
+            resp = dashscope.Generation.call(
+                model="qwen-turbo",
+                messages=messages,
+                tools=TOOLS,
+                result_format="message"
+            )
+            choices = resp.output.get("choices", [])
+            if not choices:
+                answer = "AI 思考失败"
+                break
+            ai_msg = choices[0]["message"]
 
-        if "tool_calls" in ai_msg and ai_msg["tool_calls"]:
+            # 不需要工具，直接输出最终答案
+            if "tool_calls" not in ai_msg or not ai_msg["tool_calls"]:
+                answer = ai_msg.get("content", "我是课堂分析助手")
+                break
+
+            # 执行工具调用
             tool = ai_msg["tool_calls"][0]
             func_name = tool["function"]["name"]
             args = json.loads(tool["function"]["arguments"])
+            tool_result = ""
 
             if func_name == "tool_get_teacher_all_reports":
                 tool_result = tool_get_teacher_all_reports(teacher_code)
@@ -433,6 +449,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
             else:
                 tool_result = "未知工具"
 
+            # 把工具结果塞回上下文，继续反思
             messages.append(ai_msg)
             messages.append({
                 "role": "tool",
@@ -440,15 +457,13 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
                 "name": func_name
             })
 
-            final = dashscope.Generation.call(
-                model="qwen-turbo",
-                messages=messages,
-                result_format="message"
-            )
-            answer = final["output"]["choices"][0]["message"]["content"]
-        else:
-            answer = ai_msg.get("content", "你好！我是课堂分析助手。")
+            current_round += 1
 
+        # 轮次用完仍未得出结论
+        if not answer:
+            answer = "已为你查询多节课堂数据，你可以指定具体报告ID查看详细专注度分析。"
+
+        # 保存会话
         history.append({"role": "assistant", "content": answer})
         title = question[:20] + "..." if len(question) > 20 else question
         save_session_messages(teacher_code, session_id, title, history)
