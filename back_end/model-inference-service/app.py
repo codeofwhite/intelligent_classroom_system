@@ -668,19 +668,16 @@ def report_detail():
             "ai_analysis": ""
         }), 500
 
-# ========================
-# ✅ 手动触发 AI 分析（点击才生成）
-# ========================
 @app.route("/api/generate_and_save_ai", methods=["POST"])
 def generate_and_save_ai():
     try:
         report_id = request.json.get("id")
 
-        # 1. 查报告（包含关键帧路径）
+        # 1. 查报告（包含关键帧路径 + teacher_code）
         db_tmp = pymysql.connect(host="localhost", user="root", password="password123", database="user_center_db", charset='utf8mb4')
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT cr.*, c.class_name FROM course_reports cr
+            SELECT cr.*, c.class_name, cr.teacher_code FROM course_reports cr
             JOIN classes c ON cr.class_id = c.id WHERE cr.id=%s
         """, (report_id,))
         report = cursor.fetchone()
@@ -694,10 +691,10 @@ def generate_and_save_ai():
         data = minio_client.get_object(BUCKET_NAME, report['minio_json_path'])
         stats = json.load(data)
 
-        # 3. 🔥 关键：使用当前报告自己的关键帧！！！
+        # 3. 关键帧
         key_frame_path = report.get("minio_keyframe_path", "")
 
-        # 4. 生成 AI
+        # 4. ✅ 生成 AI（传入 teacher_code！！！）
         from ai_agent import analyze_class_report
         ai_text = analyze_class_report(
             behavior_data=stats["behavior_counts"],
@@ -705,12 +702,12 @@ def generate_and_save_ai():
                 "class_name": report["class_name"],
                 "lesson_section": report["lesson_section"]
             },
-            course_name="课堂行为分析",
-            # 🔥 这里改成真实关键帧路径
+            teacher_code=report["teacher_code"],  # ✅ 这里加上
+            course_name=report.get("course_name", "课堂行为分析"),
             frame_path=key_frame_path
         )
 
-        # 5. 保存 AI 分析结果到 MinIO
+        # 5. 保存
         ai_path = report['minio_json_path'].replace("stats.json", "ai_report.md")
         minio_client.put_object(
             BUCKET_NAME,
@@ -872,6 +869,25 @@ def delete_report():
     except Exception as e:
         print("删除报告错误：", e)
         return jsonify({"error": str(e)}), 500
+
+@app.route('/api/teacher/course_schedule', methods=['POST'])
+def api_course_schedule():
+    data = request.json
+    teacher_code = data.get("teacher_code", "")
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT week_day, section, class_name, course_name, classroom 
+            FROM teacher_course_schedule 
+            WHERE teacher_code=%s ORDER BY week_day, section
+        """, (teacher_code,))
+        rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+        return jsonify({"list": rows})
+    except:
+        return jsonify({"list": []})
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)

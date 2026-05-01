@@ -208,6 +208,36 @@ def tool_get_batch_report_detail(report_ids: list):
         res.append(detail)
     return str(res)
 
+def tool_get_teacher_schedule(teacher_code: str):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT week_day, section, class_name, course_name, classroom 
+            FROM teacher_course_schedule 
+            WHERE teacher_code=%s 
+            ORDER BY week_day, section
+        """, (teacher_code,))
+        rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        if not rows:
+            return "暂无课程安排"
+
+        week_map = {1:"周一",2:"周二",3:"周三",4:"周四",5:"周五",6:"周六",7:"周日"}
+        lines = ["📅 你的课程安排："]
+        for r in rows:
+            wd = week_map.get(r["week_day"], "未知")
+            sec = r["section"]
+            cls = r["class_name"]
+            cou = r["course_name"]
+            room = r["classroom"]
+            lines.append(f"• {wd} 第{sec}节 | {cls} - {cou} | {room}")
+        return "\n".join(lines)
+    except Exception as e:
+        return f"获取课表失败：{str(e)}"
+
 # ========================
 # 工具定义
 # ========================
@@ -290,6 +320,18 @@ TOOLS = [
                 }
             },
             "required": ["report_ids"]
+        }
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "tool_get_teacher_schedule",
+        "description": "获取老师本周的课程安排、课表",
+        "parameters": {
+            "type": "object",
+            "properties": {},
+            "required": []
         }
     }
 }
@@ -490,6 +532,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
 2. 必须获取所有报告详情后再给出结论
 3. 禁止中途回复、禁止只查部分数据
 4. 只输出最终结论，不要输出思考过程
+5. 可以查询老师的课程表、本周课程、上课班级、上课教室
             """.strip()
             temperature=0.7
         else:
@@ -556,6 +599,8 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
                     tool_result = tool_get_time_range_stats(teacher_code, args.get("time_type", "7d"))
                 elif func_name == "tool_get_class_keyframe":
                     tool_result = tool_get_class_keyframe(args.get("report_id"))
+                elif func_name == "tool_get_teacher_schedule":
+                    tool_result = tool_get_teacher_schedule(teacher_code)
                 else:
                     tool_result = "未知工具"
 

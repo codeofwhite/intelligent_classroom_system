@@ -24,7 +24,6 @@ BUCKET_NAME = "video-bucket"
 # 记忆写入
 def add_memory(content: str):
     session_memory.append(content)
-    # 限制记忆长度，防止超长
     if len(session_memory) > 10:
         session_memory.pop(0)
 
@@ -35,11 +34,19 @@ def get_memory_context() -> str:
     return "\n".join([f"【历史记录】{item}" for item in session_memory])
 
 # ========================
-# 工具定义
+# 工具定义（已改成真实接口！）
 # ========================
 def tool_get_yolo_data(behavior_data):
     print("[工具] 正在获取 YOLO 行为统计...")
-    res = f"YOLO行为检测统计：\n{json.dumps(behavior_data, ensure_ascii=False, indent=2)}"
+
+    # ✅ 关键：告诉 AI 这是【次数】不是【人数】
+    res = """
+【注意：以下为AI视觉检测次数，非学生人数】
+学生行为检测次数统计：
+"""
+    for k, v in behavior_data.items():
+        res += f"- {k}：{v} 次\n"
+
     print("[工具] YOLO 数据获取完成 ✅")
     return res
 
@@ -50,21 +57,16 @@ def tool_vlm_image_analysis(image_minio_path: str):
 
     print(f"[VLM] 正在分析 MinIO 图片：{image_minio_path}")
     try:
-        # 1. 创建临时目录
         import os
         TMP_DIR = "./tmp_vlm"
         if not os.path.exists(TMP_DIR):
             os.makedirs(TMP_DIR)
 
-        # 2. 生成临时文件名
         tmp_file = os.path.join(TMP_DIR, "tmp_keyframe.jpg")
-
-        # 3. 从 MinIO 下载到本地临时文件
         response = MINIO_CLIENT.get_object(BUCKET_NAME, image_minio_path)
         with open(tmp_file, "wb") as f:
             f.write(response.read())
 
-        # 4. 调用 Qwen-VL（正确格式！）
         requests.adapters.DEFAULT_TIMEOUT = 15
         messages = [
             {
@@ -91,19 +93,50 @@ def tool_vlm_image_analysis(image_minio_path: str):
         print(f"[VLM] 错误：{e}")
         return f"VLM 分析失败：{str(e)}"
 
-def tool_get_course_info(course_name: str, class_name: str):
-    print("[工具] 获取课程信息...")
-    res = f"课程背景信息：班级{class_name}，当前授课课程：{course_name}，需结合学科特点评估课堂状态"
-    print("[工具] 课程信息获取完成 ✅")
-    return res
+# ========================
+# ✅ 【重大修改】这里改成调用你真实的课表接口！
+# ========================
+def tool_get_real_course_schedule(teacher_code: str):
+    try:
+        print(f"[工具] 正在从后端获取老师【{teacher_code}】真实课表...")
+        
+        # 调用你自己的后端接口
+        res = requests.post(
+            "http://localhost:5002/api/teacher/course_schedule",
+            json={"teacher_code": teacher_code},
+            timeout=10
+        )
+        data = res.json()
+        schedule_list = data.get("list", [])
 
-def tool_dispatcher(behavior_data, frame_path, course_name, class_name):
+        if not schedule_list:
+            return "📅 该老师暂无课程安排"
+
+        week_map = {1:"周一",2:"周二",3:"周三",4:"周四",5:"周五",6:"周六",7:"周日"}
+        lines = ["📅 老师真实课程安排："]
+        for item in schedule_list:
+            wd = week_map.get(item["week_day"], "未知")
+            sec = item["section"]
+            cls = item["class_name"]
+            cou = item["course_name"]
+            room = item["classroom"]
+            lines.append(f"• {wd} 第{sec}节｜{cls} - {cou}｜{room}")
+
+        result = "\n".join(lines)
+        print("[工具] 真实课表获取完成 ✅")
+        return result
+
+    except Exception as e:
+        print(f"[工具] 获取课表失败：{e}")
+        return "获取真实课表失败，使用基础信息"
+
+def tool_dispatcher(behavior_data, frame_path, teacher_code):
     print("\n========================================")
     print("🤖 AGENT 开始调度所有工具...")
     tool_res = []
     tool_res.append(tool_get_yolo_data(behavior_data))
     tool_res.append(tool_vlm_image_analysis(frame_path))
-    tool_res.append(tool_get_course_info(course_name, class_name))
+    tool_res.append(tool_get_real_course_schedule(teacher_code))  # ✅ 真实接口
     print("🤖 AGENT 所有工具调用完成 ✅")
     print("========================================\n")
     return "\n\n".join(tool_res)
@@ -117,7 +150,7 @@ def perception_agent(tool_result: str, memory_ctx: str):
 
     system = """
 你是Perception Agent课堂感知智能体，只做客观事实提取，不主观评价。
-输入：YOLO行为数据、VLM画面描述、课程信息、历史记忆
+输入：YOLO行为数据、VLM画面描述、真实课程信息、历史记忆
 输出：客观课堂状态、学生行为分布、画面直观现象
 """
     user = f"""
@@ -145,13 +178,13 @@ def conclusion_agent(perception_content: str, class_info: dict, course_name: str
     start = time.time()
 
     system = """
-你是Conclusion Agent课堂决策大脑，结合感知数据+课程场景做深度分析。
+你是Conclusion Agent课堂决策大脑，结合感知数据+真实课程表做深度分析。
 必须完成：
 1. 课堂整体状态综合评估
 2. 分心行为占比与问题诊断
-3. 结合当前课程学科内容，分析课堂节奏、知识点讲解适配性
-4. 判断课堂互动是否不足、内容是否重复冗余
-5. 输出结构化Markdown专业报告+可落地教学改进建议
+3. 结合真实课程、班级、学科特点分析
+4. 判断课堂节奏与教学适配性
+5. 输出专业Markdown报告 + 教学改进建议
 """
     memory_ctx = get_memory_context()
     user = f"""
@@ -180,41 +213,37 @@ def conclusion_agent(perception_content: str, class_info: dict, course_name: str
     return final_report
 
 # ========================
-# 总入口
+# 总入口（已升级）
 # ========================
 def analyze_class_report(
     behavior_data,
     class_info: dict,
+    teacher_code: str,
     course_name: str = "常规文化课",
     frame_path: str = None
 ):
     print("\n" + "="*60)
-    print("🚀 课堂行为分析 AGENT 系统启动")
+    print("🚀 课堂行为分析 AGENT 系统启动（真实数据版）")
     print("="*60)
 
     total_start = time.time()
 
-    # 清空记忆
     print("\n[1/5] 清空会话记忆...")
     session_memory.clear()
 
-    # 调用工具
-    print("[2/5] 调度所有工具（YOLO + VLM + 课程信息）...")
-    tool_all_data = tool_dispatcher(behavior_data, frame_path, course_name, class_info["class_name"])
+    # ✅ 调度工具（含真实课表）
+    print("[2/5] 调度所有工具（YOLO + VLM + 真实课表）...")
+    tool_all_data = tool_dispatcher(behavior_data, frame_path, teacher_code)
 
-    # 记忆上下文
     print("[3/5] 加载历史记忆上下文...")
     memory_ctx = get_memory_context()
 
-    # 感知Agent
     print("[4/5] 启动感知智能体...")
     perception_res = perception_agent(tool_all_data, memory_ctx)
 
-    # 决策Agent
     print("[5/5] 启动决策智能体生成报告...")
     final_report = conclusion_agent(perception_res, class_info, course_name)
 
-    # 结束
     print("\n" + "="*60)
     print(f"✅ AGENT 系统全部完成！总耗时：{round(time.time() - total_start, 1)} 秒")
     print("="*60 + "\n")

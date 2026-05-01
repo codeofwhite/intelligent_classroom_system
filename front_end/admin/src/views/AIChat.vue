@@ -27,7 +27,9 @@
           <div v-if="isImageMsg(msg.content)" class="image-wrapper">
             <img :src="getImageUrl(msg.content)" alt="课堂关键帧" />
           </div>
-          <div v-else class="bubble">{{ msg.content }}</div>
+          
+          <!-- ✅ 这里改成渲染 Markdown -->
+          <div v-else class="bubble" v-html="renderMarkdown(msg.content)"></div>
         </div>
         <div v-if="loading" class="loading">AI 思考中...</div>
       </div>
@@ -73,6 +75,13 @@
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
 import axios from 'axios'
+import MarkdownIt from 'markdown-it'
+
+const md = new MarkdownIt({
+  html: false,
+  breaks: true,
+  linkify: true
+})
 
 const sessionList = ref([])
 const currentSessionId = ref(null)
@@ -81,7 +90,6 @@ const inputText = ref('')
 const loading = ref(false)
 const chatBox = ref(null)
 
-// 思维过程数据
 const thinking = ref({
   intent: '',
   tools: [],
@@ -102,6 +110,11 @@ onMounted(async () => {
     newChat()
   }
 })
+
+// ✅ Markdown 渲染
+function renderMarkdown(content) {
+  return md.render(content)
+}
 
 function isImageMsg(content) {
   return content && /https?:\/\/.*\.(jpg|jpeg|png)/i.test(content)
@@ -138,7 +151,6 @@ async function newChat() {
   const id = 'sess_' + Date.now()
   currentSessionId.value = id
   messages.value = [{ role: 'ai', content: '你好！我是课堂分析AI助手～' }]
-  // 清空思维面板
   thinking.value = { intent: '', tools: [], args: [], results: [] }
   await loadSessionList()
 }
@@ -146,7 +158,6 @@ async function newChat() {
 async function switchSession(sessionId) {
   currentSessionId.value = sessionId
   messages.value = await loadSessionMessages(sessionId)
-  // 切换会话清空思维
   thinking.value = { intent: '', tools: [], args: [], results: [] }
   await nextTick()
   chatBox.value.scrollTop = chatBox.value.scrollHeight
@@ -176,7 +187,6 @@ const sendMessage = async () => {
     const data = await res.json()
     messages.value.push({ role: 'ai', content: data.answer })
 
-    // 赋值思维过程 自动刷新右侧面板
     thinking.value = data.thinking_process || {
       intent: '',
       tools: [],
@@ -229,7 +239,6 @@ function formatTime(timeStr) {
   overflow: hidden;
 }
 
-/* 左栏固定宽度 */
 .chat-sidebar {
   width: 240px;
   background: #fff;
@@ -305,7 +314,6 @@ function formatTime(timeStr) {
   color: #ef4444;
 }
 
-/* 中间聊天 自适应占满剩余 */
 .chat-container {
   flex: 1;
   display: flex;
@@ -339,7 +347,25 @@ function formatTime(timeStr) {
   padding: 10px 14px;
   border-radius: 12px;
   font-size: 14px;
-  line-height: 1.4;
+  line-height: 1.6;
+}
+
+/* ✅ Markdown 美化 */
+.bubble :deep(ul) {
+  margin: 6px 0;
+  padding-left: 20px;
+}
+.bubble :deep(li) {
+  margin: 4px 0;
+}
+.bubble :deep(strong) {
+  color: #2563eb;
+  font-weight: 600;
+}
+.bubble :deep(h3) {
+  margin: 0 0 8px 0;
+  font-size: 15px;
+  color: #1e293b;
 }
 
 .image-wrapper {
@@ -401,7 +427,6 @@ function formatTime(timeStr) {
   text-align: center;
 }
 
-/* 右栏：固定思维面板 宽度固定 不悬浮不遮挡 */
 .thinking-panel {
   width: 340px;
   flex-shrink: 0;
