@@ -1,5 +1,5 @@
 from datetime import datetime, timedelta
-
+from dashscope import Generation
 import dashscope
 import json
 import pymysql
@@ -315,6 +315,46 @@ def save_session_messages(teacher_code, session_id, title, messages):
     except Exception as e:
         print("保存会话失败", e)
 
+# 意图分类：固定5类，适配你整个系统
+def detect_user_intent(question: str) -> str:
+    """
+    返回意图类型：
+    query_history    - 查询个人历史课堂
+    query_report      - 查询单节课详细报告/专注度/行为
+    query_class       - 查询班级整体统计/纪律
+    chat_chitchat     - 日常闲聊/问候
+    other             - 无关问题、非业务请求
+    """
+    prompt = f"""
+请对用户问题做意图分类，只能严格返回下面其中一个标识，不要解释、不要多余文字：
+可选标识：
+query_history
+query_report
+query_class
+chat_chitchat
+other
+
+规则：
+1. 问自己上过的课堂、历史记录、有哪些分析报告 → query_history
+2. 问某一节课专注度、课堂画面、行为统计、详细分析 → query_report
+3. 问整个班级整体纪律、整体表现、班级统计 → query_class
+4. 问候、打招呼、闲聊、你是谁、能干什么 → chat_chitchat
+5. 写作文、娱乐、生活琐事、与课堂分析完全无关 → other
+
+用户问题：{question}
+    """
+
+    resp = Generation.call(
+        model='qwen-turbo',
+        messages=[{'role':'user','content':prompt}],
+        result_format='text',
+        temperature=0.1
+    )
+    intent = resp.output.text.strip()
+    # 兜底容错
+    if intent not in ["query_history","query_report","query_class","chat_chitchat","other"]:
+        return "other"
+    return intent
 
 # ========================
 # 核心对话接口
@@ -323,6 +363,21 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
     history = get_session_messages(teacher_code, session_id)
 
     try:
+        
+        intent = detect_user_intent(question)
+        
+        if intent in ["chat_chitchat", "other"]:
+            if intent == "chat_chitchat":
+                answer = "😊 我是课堂分析AI助手，我可以帮你：\n• 查询历史课堂记录\n• 查询专注度/行为统计\n• 查看课堂关键帧画面\n• 分析班级表现"
+            else:
+                answer = "🙏 抱歉，我只负责课堂行为分析相关问题，无法回答这类内容哦~"
+                
+            history.append({"role": "user", "content": question})
+            history.append({"role": "assistant", "content": answer})
+            title = question[:20] + "..." if len(question) > 20 else question
+            save_session_messages(teacher_code, session_id, title, history)
+            return answer
+        
         history.append({"role": "user", "content": question})
 
         # 强制关键词识别：只要提 keyframe / 关键帧 / 图片，直接返回
