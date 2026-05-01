@@ -1,6 +1,6 @@
 <template>
   <div class="ai-chat-page">
-    <!-- 左侧：历史对话 -->
+    <!-- 左栏：历史对话 -->
     <div class="chat-sidebar">
       <div class="sidebar-header">
         <button class="new-chat-btn" @click="newChat">➕ 新对话</button>
@@ -15,13 +15,12 @@
         >
           <div class="title">{{ s.title }}</div>
           <div class="time">{{ formatTime(s.update_time) }}</div>
-          <!-- 删除按钮 -->
           <div class="del-btn" @click.stop="deleteSession(s)">×</div>
         </div>
       </div>
     </div>
 
-    <!-- 右侧：聊天区域 -->
+    <!-- 中间：聊天区域 -->
     <div class="chat-container">
       <div class="chat-box" ref="chatBox">
         <div v-for="(msg, idx) in messages" :key="idx" class="msg" :class="msg.role">
@@ -42,6 +41,32 @@
         <button @click="sendMessage" :disabled="loading">发送</button>
       </div>
     </div>
+
+    <!-- 右栏：固定AI思维链面板 永久展示 不遮挡 -->
+    <div class="thinking-panel">
+      <div class="thinking-header">
+        <h4>🧠 AI 思维链</h4>
+      </div>
+      <div class="thinking-body">
+        <div class="section">
+          <label>🎯 识别意图</label>
+          <div class="val">{{ thinking.intent || '暂无' }}</div>
+        </div>
+
+        <div class="section" v-if="thinking.tools.length > 0">
+          <label>⚙️ 工具调用流程</label>
+          <div class="tool-item" v-for="(t, i) in thinking.tools" :key="i">
+            <div class="name">{{ t }}</div>
+            <div class="args">参数：{{ thinking.args[i] || '无' }}</div>
+            <div class="result">返回：{{ thinking.results[i] || '无' }}</div>
+          </div>
+        </div>
+
+        <div class="empty-tip" v-else>
+          发送问题后自动展示智能体推理过程
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -55,6 +80,14 @@ const messages = ref([])
 const inputText = ref('')
 const loading = ref(false)
 const chatBox = ref(null)
+
+// 思维过程数据
+const thinking = ref({
+  intent: '',
+  tools: [],
+  args: [],
+  results: []
+})
 
 let teacherCode = ''
 
@@ -70,7 +103,6 @@ onMounted(async () => {
   }
 })
 
-// 图片判断
 function isImageMsg(content) {
   return content && /https?:\/\/.*\.(jpg|jpeg|png)/i.test(content)
 }
@@ -79,7 +111,6 @@ function getImageUrl(content) {
   return match ? match[0] : ''
 }
 
-// 加载会话列表
 async function loadSessionList() {
   const res = await fetch('http://localhost:5002/api/chat/sessions', {
     method: 'POST',
@@ -90,7 +121,6 @@ async function loadSessionList() {
   sessionList.value = data.sessions || []
 }
 
-// 加载消息
 async function loadSessionMessages(sessionId) {
   const res = await fetch('http://localhost:5002/api/chat/messages', {
     method: 'POST',
@@ -104,23 +134,24 @@ async function loadSessionMessages(sessionId) {
   return data.messages || [{ role: 'ai', content: '你好！我是课堂分析AI助手～' }]
 }
 
-// 新建对话
 async function newChat() {
   const id = 'sess_' + Date.now()
   currentSessionId.value = id
   messages.value = [{ role: 'ai', content: '你好！我是课堂分析AI助手～' }]
+  // 清空思维面板
+  thinking.value = { intent: '', tools: [], args: [], results: [] }
   await loadSessionList()
 }
 
-// 切换会话
 async function switchSession(sessionId) {
   currentSessionId.value = sessionId
   messages.value = await loadSessionMessages(sessionId)
+  // 切换会话清空思维
+  thinking.value = { intent: '', tools: [], args: [], results: [] }
   await nextTick()
   chatBox.value.scrollTop = chatBox.value.scrollHeight
 }
 
-// 发送消息
 const sendMessage = async () => {
   const q = inputText.value.trim()
   if (!q || loading.value) return
@@ -144,6 +175,15 @@ const sendMessage = async () => {
 
     const data = await res.json()
     messages.value.push({ role: 'ai', content: data.answer })
+
+    // 赋值思维过程 自动刷新右侧面板
+    thinking.value = data.thinking_process || {
+      intent: '',
+      tools: [],
+      args: [],
+      results: []
+    }
+
     await loadSessionList()
   } catch (err) {
     messages.value.push({ role: 'ai', content: '请求失败，请稍后重试' })
@@ -154,21 +194,17 @@ const sendMessage = async () => {
   chatBox.value.scrollTop = chatBox.value.scrollHeight
 }
 
-// ✅ 删除会话（新增）
 async function deleteSession(session) {
   if (!confirm('确定要删除这条对话记录吗？')) return
-
   try {
     await axios.post('http://localhost:5002/api/chat/delete_session', {
       teacher_code: teacherCode,
       session_id: session.session_id
     })
-
     await loadSessionList()
-
-    // 如果删除的是当前会话 → 清空
     if (currentSessionId.value === session.session_id) {
       messages.value = [{ role: 'ai', content: '你好！我是课堂分析AI助手～' }]
+      thinking.value = { intent: '', tools: [], args: [], results: [] }
       currentSessionId.value = null
     }
   } catch (e) {
@@ -176,7 +212,6 @@ async function deleteSession(session) {
   }
 }
 
-// 时间格式化
 function formatTime(timeStr) {
   if (!timeStr) return ''
   const d = new Date(timeStr)
@@ -194,13 +229,14 @@ function formatTime(timeStr) {
   overflow: hidden;
 }
 
+/* 左栏固定宽度 */
 .chat-sidebar {
   width: 240px;
   background: #fff;
   border-right: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
-  position: relative;
+  flex-shrink: 0;
 }
 
 .sidebar-header {
@@ -250,7 +286,6 @@ function formatTime(timeStr) {
   margin-top: 2px;
 }
 
-/* ✅ 删除按钮样式 */
 .del-btn {
   position: absolute;
   right: 8px;
@@ -270,11 +305,13 @@ function formatTime(timeStr) {
   color: #ef4444;
 }
 
+/* 中间聊天 自适应占满剩余 */
 .chat-container {
   flex: 1;
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  border-right: 1px solid #e5e7eb;
 }
 
 .chat-box {
@@ -362,5 +399,67 @@ function formatTime(timeStr) {
   color: #64748b;
   padding: 8px 0;
   text-align: center;
+}
+
+/* 右栏：固定思维面板 宽度固定 不悬浮不遮挡 */
+.thinking-panel {
+  width: 340px;
+  flex-shrink: 0;
+  height: 100%;
+  background: #1e1e2e;
+  color: #fff;
+  padding: 16px;
+  overflow-y: auto;
+}
+
+.thinking-header h4 {
+  margin: 0 0 12px 0;
+  font-size: 16px;
+  color: #fff;
+}
+
+.section {
+  margin-bottom: 14px;
+}
+.section label {
+  font-size: 12px;
+  color: #9ca3af;
+  margin-bottom: 4px;
+  display: block;
+}
+.val {
+  background: #313141;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  word-break: break-all;
+}
+
+.tool-item {
+  background: #29293d;
+  padding: 10px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.tool-item .name {
+  color: #38bdf8;
+  font-weight: bold;
+  margin-bottom: 4px;
+}
+.tool-item .args {
+  color: #a5b4fc;
+  margin-bottom: 4px;
+}
+.tool-item .result {
+  color: #d1d5db;
+  word-break: break-all;
+}
+
+.empty-tip {
+  color: #6b7280;
+  font-size: 13px;
+  text-align: center;
+  padding: 20px 0;
 }
 </style>

@@ -453,7 +453,15 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
             history.append({"role": "assistant", "content": answer})
             save_session_messages(teacher_code, session_id, question[:20] + "...", history)
             insert_agent_log(teacher_code, session_id, question, intent=log_intent, final_answer=answer)
-            return answer
+            return {
+                "answer": answer,
+                "thinking_process": {
+                    "intent": log_intent,
+                    "tools": log_tool_list,
+                    "args": log_args_list,
+                    "results": log_tool_res_list
+                }
+            }
 
         # 2. 关键帧快捷识别
         q = question.lower()
@@ -585,12 +593,29 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
         history.append({"role": "assistant", "content": answer})
         save_session_messages(teacher_code, session_id, question[:20] + "...", history)
 
-        return answer
+        return {
+            "answer": answer,
+            "thinking_process": {
+                "intent": log_intent,
+                "tools": log_tool_list,
+                "args": log_args_list,
+                "results": log_tool_res_list
+            }
+        }
 
     except Exception as e:
         err = f"系统错误：{str(e)}"
         insert_agent_log(teacher_code, session_id, question, final_answer=err)
-        return err
+        # ========== 【修改】错误也返回统一格式 ==========
+        return {
+            "answer": err,
+            "thinking_process": {
+                "intent": "",
+                "tools": [],
+                "args": [],
+                "results": []
+            }
+        }
 
 def get_teacher_long_memory(teacher_code: str):
     try:

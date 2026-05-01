@@ -791,8 +791,8 @@ def api_chat():
     question = data.get("question", "")
     teacher_code = data.get("teacher_code", "")
     session_id = data.get("session_id", "")
-    answer = chat_agent_api(question, teacher_code, session_id)
-    return jsonify({"answer": answer})
+    result = chat_agent_api(question, teacher_code, session_id)
+    return jsonify(result)  # 直接返回 { answer, thinking_process }
 
 # 获取会话列表
 @app.route('/api/chat/sessions', methods=['POST'])
