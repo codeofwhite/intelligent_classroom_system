@@ -65,15 +65,21 @@ def tool_get_single_report_detail(report_id: int):
         cursor.close()
         db.close()
 
-        if not report:
-            return "未找到该报告"
+        if not report or not report.get('minio_json_path'):
+            return f"【报告ID {report_id}】错误：未找到数据文件"
 
+        # ======================
+        # 【修复】正确读取 minio
+        # ======================
         try:
-            data = MINIO_CLIENT.get_object(BUCKET_NAME, report['minio_json_path'])
-            stats = json.load(data.data)
+            # 正确获取方式
+            resp = MINIO_CLIENT.get_object(BUCKET_NAME, report['minio_json_path'])
+            json_data = resp.read()
+            stats = json.loads(json_data)
             counts = stats["behavior_counts"]
-        except:
-            return f"报告ID {report_id}：已完成课堂分析，可查看专注度、分心行为、举手次数等数据。"
+        except Exception as e:
+            # 真正的错误，而不是假文案
+            return f"【报告ID {report_id}】读取失败：{str(e)}"
 
         total = sum(counts.values())
         focus = counts["举手"] + counts["看书"] + counts["写字"]
@@ -81,14 +87,14 @@ def tool_get_single_report_detail(report_id: int):
         focus_rate = round(100 * focus / total, 1) if total > 0 else 0
 
         return f"""
-【报告ID {report_id} 课堂详情】
+【报告ID {report_id} 完整数据】
 专注率：{focus_rate}%
-总行为次数：{total}
+总行为：{total}次
 ✅ 专注：举手{counts['举手']} 看书{counts['看书']} 写字{counts['写字']}
 ⚠️ 分心：手机{counts['使用手机']} 低头{counts['低头做其他事情']} 睡觉{counts['睡觉']}
 """
     except Exception as e:
-        return f"获取课程详情失败：{str(e)}"
+        return f"【报告ID {report_id}】异常：{str(e)}"
 
 # ========================
 # 工具 3：获取某班级所有学生列表 ✅ 连表查询版（完全匹配你的表）
@@ -194,7 +200,13 @@ def tool_get_class_keyframe(report_id: int):
     except Exception as e:
         return f"获取关键帧失败：{str(e)}"
     
-
+def tool_get_batch_report_detail(report_ids: list):
+    """批量一次性获取多个报告详情"""
+    res = []
+    for rid in report_ids:
+        detail = tool_get_single_report_detail(rid)
+        res.append(detail)
+    return str(res)
 
 # ========================
 # 工具定义
@@ -262,7 +274,25 @@ TOOLS = [
                 "required": ["report_id"]
             }
         }
+    },
+{
+    "type": "function",
+    "function": {
+        "name": "tool_get_batch_report_detail",
+        "description": "批量一次性获取多个课堂报告的详细数据",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "report_ids": {
+                    "type": "array",
+                    "items": {"type": "integer"},
+                    "description": "报告ID列表，如[2,3,4]"
+                }
+            },
+            "required": ["report_ids"]
+        }
     }
+}
 ]
 
 # ========================
@@ -418,7 +448,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
         log_intent = intent
         
         if intent in ["chat_chitchat", "other"]:
-            answer = "😊 我是课堂分析AI助手，我可以帮你：\n• 查询历史课堂记录\n• 查询专注度/行为统计\n• 查看课堂关键帧画面\n• 分析班级表现" if intent=="chat_chitchat" else "🙏 抱歉，我只负责课堂行为分析相关问题。"
+            answer = "😊 我是课堂分析AI助手，我可以帮你：\n• 查询历史课堂记录\n• 查询专注度/行为统计\n• 查询课堂关键帧画面\n• 多维度分析班级表现" if intent=="chat_chitchat" else "🙏 抱歉，我只负责课堂行为分析相关问题。"
             history.append({"role": "user", "content": question})
             history.append({"role": "assistant", "content": answer})
             save_session_messages(teacher_code, session_id, question[:20] + "...", history)
@@ -446,101 +476,99 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
         # 【增强】对比任务强制强提示+高温度
         if is_compare:
             base_prompt = """
-你是课堂分析专家，必须严格执行：
-1. 用户问【哪节课分心最严重/专注最高/对比】→ 第一步：调用tool_get_teacher_all_reports拿全部报告ID
-2. 第二步：对每个report_id调用tool_get_single_report_detail查详情
-3. 第三步：汇总所有数据，横向对比专注率、分心次数
-4. 第四步：明确输出：哪节最分心、哪节最专注+每节课数据
-5. 必须多轮调用，直到所有报告查完，禁止提前结束、禁止敷衍、禁止不回复
+你是专业课堂分析专家。
+用户需要对比多节课数据时：
+1. 必须先获取所有课堂报告ID
+2. 必须获取所有报告详情后再给出结论
+3. 禁止中途回复、禁止只查部分数据
+4. 只输出最终结论，不要输出思考过程
             """.strip()
-            temperature=0.7  # 对比任务提高温度，强制输出
+            temperature=0.7
         else:
-            base_prompt = "你是课堂分析助手，自主用工具回答，数据不足继续调用，不编造。"
+            base_prompt = "你是课堂分析助手，自主使用工具回答问题，数据不足继续调用，不编造、不输出中间思考。"
             temperature=0.1
 
         system_prompt = build_system_prompt_with_memory(teacher_code, base_prompt)
 
-        # 【核心修复】完全独立、干净的推理链，不带任何history
+        # 【核心】独立推理链，不污染
         messages = [
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": question}
         ]
 
-        max_round=5
-        current_round=0
-        answer=""
-        ai_msg=None
+        max_round = 5
+        current_round = 0
+        answer = ""
+        ai_msg = None
 
         while current_round < max_round:
-            # 【关键】增加timeout+retry，防止无响应
             try:
-                resp=dashscope.Generation.call(
+                resp = dashscope.Generation.call(
                     model="qwen-plus",
                     messages=messages,
                     tools=TOOLS,
                     result_format="message",
                     temperature=temperature,
-                    timeout=30  # 超时30秒
+                    timeout=30
                 )
             except Exception as e:
-                log_tool_res_list.append(f"API超时：{str(e)}")
-                current_round +=1
+                current_round += 1
                 continue
 
-            choices=resp.output.get("choices", [])
+            choices = resp.output.get("choices", [])
             if not choices:
-                answer="AI思考失败（无choices）"
+                answer = "数据分析失败"
                 break
 
-            ai_msg=choices[0]["message"]
+            ai_msg = choices[0]["message"]
 
-            # 强制：如果没tool_calls且是对比任务 → 重试（解决不调用工具）
-            if is_compare and ("tool_calls" not in ai_msg or not ai_msg["tool_calls"]):
+            # --------------------------
+            # 【关键修改】
+            # 如果还在调用工具 → 绝对不保存中间文本！
+            # --------------------------
+            if "tool_calls" in ai_msg and ai_msg["tool_calls"]:
+                tool = ai_msg["tool_calls"][0]
+                func_name = tool["function"]["name"]
+                args = json.loads(tool["function"]["arguments"])
+                tool_result = ""
+
+                log_tool_list.append(func_name)
+                log_args_list.append(json.dumps(args))
+
+                if func_name == "tool_get_teacher_all_reports":
+                    tool_result = tool_get_teacher_all_reports(teacher_code)
+                elif func_name == "tool_get_single_report_detail":
+                    tool_result = tool_get_single_report_detail(args.get("report_id"))
+                    update_teacher_long_memory(teacher_code, report_id=args.get("report_id"))
+                elif func_name == "tool_get_batch_report_detail":
+                    tool_result = tool_get_batch_report_detail(args.get("report_ids"))
+                elif func_name == "tool_get_class_students":
+                    tool_result = tool_get_class_students(args.get("class_id"))
+                elif func_name == "tool_get_time_range_stats":
+                    tool_result = tool_get_time_range_stats(teacher_code, args.get("time_type", "7d"))
+                elif func_name == "tool_get_class_keyframe":
+                    tool_result = tool_get_class_keyframe(args.get("report_id"))
+                else:
+                    tool_result = "未知工具"
+
+                log_tool_res_list.append(tool_result)
+
+                # 追加到推理链，但**绝对不返回给前端**
                 messages.append(ai_msg)
-                messages.append({"role":"user","content":"请先调用tool_get_teacher_all_reports获取所有报告列表，必须调用工具！"})
-                current_round +=1
+                messages.append({"role": "tool", "content": tool_result})
+                current_round += 1
                 continue
 
-            # 不需要工具 → 结束
-            if "tool_calls" not in ai_msg or not ai_msg["tool_calls"]:
-                answer=ai_msg.get("content", "完成分析")
+            # --------------------------
+            # 只有结束工具调用，才取最终答案
+            # --------------------------
+            else:
+                answer = ai_msg.get("content", "已完成分析").strip()
                 break
 
-            # 执行工具
-            tool=ai_msg["tool_calls"][0]
-            func_name=tool["function"]["name"]
-            args=json.loads(tool["function"]["arguments"])
-            tool_result=""
-
-            log_tool_list.append(func_name)
-            log_args_list.append(json.dumps(args, ensure_ascii=False))
-
-            if func_name=="tool_get_teacher_all_reports":
-                tool_result=tool_get_teacher_all_reports(teacher_code)
-            elif func_name=="tool_get_single_report_detail":
-                tool_result=tool_get_single_report_detail(args.get("report_id"))
-                update_teacher_long_memory(teacher_code, report_id=args.get("report_id"))
-            elif func_name=="tool_get_class_students":
-                tool_result=tool_get_class_students(args.get("class_id"))
-                update_teacher_long_memory(teacher_code, class_id=args.get("class_id"))
-            elif func_name=="tool_get_time_range_stats":
-                tool_result=tool_get_time_range_stats(teacher_code, args.get("time_type", "7d"))
-            elif func_name=="tool_get_class_keyframe":
-                tool_result=tool_get_class_keyframe(args.get("report_id"))
-            else:
-                tool_result="未知工具"
-
-            log_tool_res_list.append(tool_result)
-
-            # 追加到推理链
-            messages.append(ai_msg)
-            messages.append({"role": "tool", "content": tool_result, "name": func_name})
-
-            current_round +=1
-
-        # 兜底
+        # 最终兜底
         if not answer:
-            answer=ai_msg.get("content", "已完成数据分析（兜底）") if ai_msg else "已完成数据分析（兜底）"
+            answer = ai_msg.get("content", "课堂分析完成") if ai_msg else "课堂分析完成"
 
         # 日志
         insert_agent_log(
@@ -552,7 +580,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
             final_answer=answer
         )
 
-        # 最后写入history
+        # 只写入最终结果
         history.append({"role": "user", "content": question})
         history.append({"role": "assistant", "content": answer})
         save_session_messages(teacher_code, session_id, question[:20] + "...", history)
@@ -560,7 +588,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
         return answer
 
     except Exception as e:
-        err=f"错误：{str(e)}"
+        err = f"系统错误：{str(e)}"
         insert_agent_log(teacher_code, session_id, question, final_answer=err)
         return err
 
