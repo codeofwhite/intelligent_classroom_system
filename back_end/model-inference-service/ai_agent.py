@@ -4,6 +4,7 @@ import os
 import time
 import requests
 from typing import Dict, Any
+from minio import Minio
 
 # 短期：本次课堂会话记忆
 session_memory = []
@@ -11,6 +12,14 @@ session_memory = []
 course_long_memory: Dict[str, list] = {}
 
 dashscope.api_key = "sk-06abd7a7eb514b3ebd611412f0dc3531"
+
+MINIO_CLIENT = Minio(
+    "localhost:9000",
+    access_key="admin",
+    secret_key="password123",
+    secure=False
+)
+BUCKET_NAME = "video-bucket"
 
 # 记忆写入
 def add_memory(content: str):
@@ -34,37 +43,53 @@ def tool_get_yolo_data(behavior_data):
     print("[工具] YOLO 数据获取完成 ✅")
     return res
 
-def tool_vlm_image_analysis(image_path: str):
-    if not image_path or not os.path.exists(image_path):
+def tool_vlm_image_analysis(image_minio_path: str):
+    if not image_minio_path:
         print("[VLM] 未找到关键帧图片，跳过")
         return "未检测到有效课堂关键帧图像"
 
-    print(f"[VLM] 正在分析图片：{image_path}")
+    print(f"[VLM] 正在分析 MinIO 图片：{image_minio_path}")
     try:
-        # 加全局超时限制
-        requests.adapters.DEFAULT_TIMEOUT = 12
+        # 1. 创建临时目录
+        import os
+        TMP_DIR = "./tmp_vlm"
+        if not os.path.exists(TMP_DIR):
+            os.makedirs(TMP_DIR)
+
+        # 2. 生成临时文件名
+        tmp_file = os.path.join(TMP_DIR, "tmp_keyframe.jpg")
+
+        # 3. 从 MinIO 下载到本地临时文件
+        response = MINIO_CLIENT.get_object(BUCKET_NAME, image_minio_path)
+        with open(tmp_file, "wb") as f:
+            f.write(response.read())
+
+        # 4. 调用 Qwen-VL（正确格式！）
+        requests.adapters.DEFAULT_TIMEOUT = 15
         messages = [
             {
                 "role": "user",
                 "content": [
-                    {"type": "text", "text": "客观描述课堂画面，学生坐姿、专注状态、课堂纪律"},
-                    {"type": "image", "image": f"file://{image_path}"}
+                    {"text": "详细描述这张课堂图片：学生状态、坐姿、专注度、课堂情况"},
+                    {"image": f"file://{tmp_file}"}
                 ]
             }
         ]
-        resp = dashscope.MultiModalConversation.call(model="qwen-vl-max", messages=messages)
-        
-        if not resp or not hasattr(resp, "output") or not resp.output.choices:
-            print("[VLM] 接口返回空数据")
-            return "VLM视觉分析无返回结果"
-        
-        content = resp.output.choices[0].message.content[0]['text']
-        print(f"[VLM] 分析完成：{content[:40]}...")
-        return f"VLM视觉画面分析：{content}"
-    
+
+        resp = dashscope.MultiModalConversation.call(
+            model="qwen-vl-max",
+            messages=messages
+        )
+
+        if not resp or not resp.output.choices:
+            return "VLM 视觉分析无结果"
+
+        content = resp.output.choices[0].message.content[0]["text"]
+        return f"🎥 课堂画面分析：{content}"
+
     except Exception as e:
-        print(f"[VLM] 失败：{str(e)}")
-        return f"VLM图像分析失败：{str(e)}"
+        print(f"[VLM] 错误：{e}")
+        return f"VLM 分析失败：{str(e)}"
 
 def tool_get_course_info(course_name: str, class_name: str):
     print("[工具] 获取课程信息...")

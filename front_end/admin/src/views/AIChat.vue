@@ -15,6 +15,8 @@
         >
           <div class="title">{{ s.title }}</div>
           <div class="time">{{ formatTime(s.update_time) }}</div>
+          <!-- 删除按钮 -->
+          <div class="del-btn" @click.stop="deleteSession(s)">×</div>
         </div>
       </div>
     </div>
@@ -23,11 +25,9 @@
     <div class="chat-container">
       <div class="chat-box" ref="chatBox">
         <div v-for="(msg, idx) in messages" :key="idx" class="msg" :class="msg.role">
-          <!-- 🔥 宽松匹配图片链接 -->
           <div v-if="isImageMsg(msg.content)" class="image-wrapper">
             <img :src="getImageUrl(msg.content)" alt="课堂关键帧" />
           </div>
-
           <div v-else class="bubble">{{ msg.content }}</div>
         </div>
         <div v-if="loading" class="loading">AI 思考中...</div>
@@ -47,6 +47,7 @@
 
 <script setup>
 import { ref, onMounted, nextTick } from 'vue'
+import axios from 'axios'
 
 const sessionList = ref([])
 const currentSessionId = ref(null)
@@ -69,18 +70,16 @@ onMounted(async () => {
   }
 })
 
-// 🔥 修复：判断是否包含图片链接（更宽松）
+// 图片判断
 function isImageMsg(content) {
   return content && /https?:\/\/.*\.(jpg|jpeg|png)/i.test(content)
 }
-
-// 🔥 修复：提取 URL（正则更通用）
 function getImageUrl(content) {
   const match = content.match(/https?:\/\/[^\s]+/i)
   return match ? match[0] : ''
 }
 
-// 加载会话列表（从 MySQL）
+// 加载会话列表
 async function loadSessionList() {
   const res = await fetch('http://localhost:5002/api/chat/sessions', {
     method: 'POST',
@@ -91,7 +90,7 @@ async function loadSessionList() {
   sessionList.value = data.sessions || []
 }
 
-// 加载单条会话消息
+// 加载消息
 async function loadSessionMessages(sessionId) {
   const res = await fetch('http://localhost:5002/api/chat/messages', {
     method: 'POST',
@@ -155,6 +154,28 @@ const sendMessage = async () => {
   chatBox.value.scrollTop = chatBox.value.scrollHeight
 }
 
+// ✅ 删除会话（新增）
+async function deleteSession(session) {
+  if (!confirm('确定要删除这条对话记录吗？')) return
+
+  try {
+    await axios.post('http://localhost:5002/api/chat/delete_session', {
+      teacher_code: teacherCode,
+      session_id: session.session_id
+    })
+
+    await loadSessionList()
+
+    // 如果删除的是当前会话 → 清空
+    if (currentSessionId.value === session.session_id) {
+      messages.value = [{ role: 'ai', content: '你好！我是课堂分析AI助手～' }]
+      currentSessionId.value = null
+    }
+  } catch (e) {
+    alert('删除失败')
+  }
+}
+
 // 时间格式化
 function formatTime(timeStr) {
   if (!timeStr) return ''
@@ -179,6 +200,7 @@ function formatTime(timeStr) {
   border-right: 1px solid #e5e7eb;
   display: flex;
   flex-direction: column;
+  position: relative;
 }
 
 .sidebar-header {
@@ -203,6 +225,7 @@ function formatTime(timeStr) {
 }
 
 .session-item {
+  position: relative;
   padding: 10px 12px;
   border-radius: 8px;
   cursor: pointer;
@@ -225,6 +248,26 @@ function formatTime(timeStr) {
   font-size: 12px;
   color: #64748b;
   margin-top: 2px;
+}
+
+/* ✅ 删除按钮样式 */
+.del-btn {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 18px;
+  line-height: 18px;
+  text-align: center;
+  font-size: 16px;
+  color: #999;
+  border-radius: 50%;
+  cursor: pointer;
+}
+.del-btn:hover {
+  background: #fef2f2;
+  color: #ef4444;
 }
 
 .chat-container {
@@ -262,7 +305,6 @@ function formatTime(timeStr) {
   line-height: 1.4;
 }
 
-/* 图片样式 */
 .image-wrapper {
   max-width: 300px;
 }

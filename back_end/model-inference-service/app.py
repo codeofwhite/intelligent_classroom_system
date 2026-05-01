@@ -17,6 +17,14 @@ from chat_agent import chat_agent_api, get_session_messages, get_teacher_session
 from datetime import datetime
 import io
 
+DB_CONFIG = {
+    "host": "localhost",
+    "user": "root",
+    "password": "password123",
+    "database": "user_center_db",
+    "charset": "utf8mb4"
+}
+
 db = pymysql.connect(
     host="localhost",
     user="root",
@@ -668,7 +676,7 @@ def generate_and_save_ai():
     try:
         report_id = request.json.get("id")
 
-        # 1. 查报告
+        # 1. 查报告（包含关键帧路径）
         db_tmp = pymysql.connect(host="localhost", user="root", password="password123", database="user_center_db", charset='utf8mb4')
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
@@ -679,11 +687,17 @@ def generate_and_save_ai():
         cursor.close()
         db_tmp.close()
 
+        if not report:
+            return jsonify({"error": "报告不存在"}), 404
+
         # 2. 读行为统计
         data = minio_client.get_object(BUCKET_NAME, report['minio_json_path'])
         stats = json.load(data)
 
-        # 3. 生成 AI
+        # 3. 🔥 关键：使用当前报告自己的关键帧！！！
+        key_frame_path = report.get("minio_keyframe_path", "")
+
+        # 4. 生成 AI
         from ai_agent import analyze_class_report
         ai_text = analyze_class_report(
             behavior_data=stats["behavior_counts"],
@@ -691,11 +705,12 @@ def generate_and_save_ai():
                 "class_name": report["class_name"],
                 "lesson_section": report["lesson_section"]
             },
-            course_name="高等人工智能 / 软件工程",   # 前端传参，可自定义
-            frame_path="key_frames/global_frame_30_distract_16.jpg"
+            course_name="课堂行为分析",
+            # 🔥 这里改成真实关键帧路径
+            frame_path=key_frame_path
         )
 
-        # 4. 保存到 MinIO
+        # 5. 保存 AI 分析结果到 MinIO
         ai_path = report['minio_json_path'].replace("stats.json", "ai_report.md")
         minio_client.put_object(
             BUCKET_NAME,
@@ -794,6 +809,69 @@ def api_chat_messages():
     session_id = data.get("session_id", "")
     messages = get_session_messages(teacher_code, session_id)
     return jsonify({"messages": messages})
+
+# 删除单条聊天会话
+@app.route("/api/chat/delete_session", methods=["POST"])
+def delete_session():
+    try:
+        data = request.get_json()
+        teacher_code = data.get("teacher_code")
+        session_id = data.get("session_id")
+
+        if not teacher_code or not session_id:
+            return jsonify({"code":400, "msg":"参数缺失"}),400
+
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor()
+        cursor.execute("""
+            DELETE FROM chat_sessions
+            WHERE teacher_code=%s AND session_id=%s
+        """, (teacher_code, session_id))
+        db.commit()
+        cursor.close()
+        db.close()
+
+        return jsonify({"code":200, "msg":"删除成功"})
+    except Exception as e:
+        print("删除会话错误：",e)
+        return jsonify({"code":500, "msg":"删除失败"}),500
+
+# 删除课堂分析报告（含数据库 + MinIO 文件）
+@app.route("/api/report/delete", methods=["POST"])
+def delete_report():
+    try:
+        report_id = request.json.get("report_id")
+        if not report_id:
+            return jsonify({"error": "缺少 report_id"}), 400
+
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT * FROM course_reports WHERE id=%s", (report_id,))
+        report = cursor.fetchone()
+
+        if not report:
+            return jsonify({"error": "报告不存在"}), 404
+
+        # 1. 删除 MinIO 文件
+        try:
+            minio_client.remove_object(BUCKET_NAME, report["minio_video_path"])
+            minio_client.remove_object(BUCKET_NAME, report["minio_json_path"])
+            if report.get("minio_keyframe_path"):
+                minio_client.remove_object(BUCKET_NAME, report["minio_keyframe_path"])
+        except:
+            pass
+
+        # 2. 删除数据库记录
+        cursor.execute("DELETE FROM course_reports WHERE id=%s", (report_id,))
+        db.commit()
+        cursor.close()
+        db.close()
+
+        return jsonify({"msg": "删除成功"})
+
+    except Exception as e:
+        print("删除报告错误：", e)
+        return jsonify({"error": str(e)}), 500
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)

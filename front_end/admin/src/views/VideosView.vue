@@ -10,7 +10,6 @@
       <h3>📂 上传课堂视频进行分析</h3>
       <div class="upload-form">
 
-        <!-- 🔥 新增：班级、日期、节次 -->
         <select v-model="classId" class="select-input">
           <option value="1">高一(1)班</option>
           <option value="2">高一(2)班</option>
@@ -33,7 +32,6 @@
         </button>
       </div>
 
-      <!-- 结果 -->
       <div v-if="resultUrl || statistics" class="result-section">
         <h4>✅ 分析完成</h4>
         <video v-if="resultUrl" :src="resultUrl" controls class="result-video"></video>
@@ -54,12 +52,13 @@
       </div>
     </div>
 
-    <!-- 🔥 历史记录 → 班级+日期 卡片式折叠面板 -->
+    <!-- 历史记录 -->
     <div class="card">
       <h3>📜 课堂分析历史记录</h3>
       <button @click="fetchTeacherReports" class="btn-sm" style="margin-left:10px;">
         🔄 刷新历史记录
       </button>
+
       <div v-for="group in dateClassGroups" :key="group.key" class="collapse-card">
         <div class="collapse-header" @click="toggleGroup(group.key)">
           <span>📅 {{ group.date }} | {{ group.className }}</span>
@@ -72,7 +71,14 @@
               <div class="label">课程：{{ item.lesson_section }}</div>
               <div class="time">{{ item.created_at }}</div>
             </div>
-            <button class="btn-sm" @click="goToAnalysis(item)">查看分析报告</button>
+
+            <div class="action-buttons">
+              <button class="btn-sm" @click="goToAnalysis(item)">查看分析报告</button>
+              <!-- 🔥 删除按钮 -->
+              <button class="btn-sm btn-delete" @click.stop="deleteReport(item)">
+                删除
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -100,23 +106,20 @@ const statistics = ref(null)
 const modelOptions = ref([])
 const selectedModel = ref('')
 
-// 🔥 新增：班级、日期、节次、教师
 const classId = ref('1')
 const lessonSection = ref('第1节')
 const recordDate = ref('')
-const teacherCode = ref('T2025001') // 登录后从用户信息取
+const teacherCode = ref('T2025001')
 
 const reportList = ref([])
 const openGroups = ref({})
 
-// 🔥 固定班级映射：永远不乱
 const CLASS_MAP = {
   1: "高一(1)班",
   2: "高一(2)班",
   3: "高一(3)班"
 }
 
-// 🔥 按【日期 + 班级】分组（卡片折叠面板）
 const dateClassGroups = computed(() => {
   const groups = {}
   reportList.value.forEach(r => {
@@ -128,7 +131,7 @@ const dateClassGroups = computed(() => {
         key,
         date,
         classId: r.class_id,
-        className: CLASS_MAP[r.class_id], // 👈 强制映射，不依赖后端
+        className: CLASS_MAP[r.class_id],
         list: [],
         open: openGroups.value[key] || false
       }
@@ -142,29 +145,28 @@ function toggleGroup(key) {
   openGroups.value[key] = !openGroups.value[key]
 }
 
-// 读取老师的所有课程报告（修改版）
+// 刷新报告
 async function fetchTeacherReports() {
   try {
     const res = await axios.get('http://localhost:5002/api/teacher/reports', {
       params: {
         teacher_code: teacherCode.value,
-        _t: Date.now() // 加时间戳，彻底绕过浏览器缓存
+        _t: Date.now()
       },
       headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate', // 禁用所有缓存
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
         'Pragma': 'no-cache',
         'Expires': '0'
       }
     })
     reportList.value = res.data
-    console.log("✅ 加载最新报告（无缓存）：", reportList.value)
   } catch (err) {
     console.error("加载报告失败", err)
-    reportList.value = [] // 失败直接清空，不显示旧数据
+    reportList.value = []
   }
 }
 
-// 上传
+// 上传分析
 function onFileChange(e) {
   videoFile.value = e.target.files[0]
 }
@@ -188,7 +190,7 @@ async function startAnalysis() {
   }
 }
 
-// 进入深度分析页面
+// 进入报告
 function goToAnalysis(item) {
   router.push({
     path: '/analysis-detail',
@@ -196,7 +198,25 @@ function goToAnalysis(item) {
   })
 }
 
-// 模型...
+// 🔥 删除报告（完整功能）
+async function deleteReport(item) {
+  if (!confirm(`确定要删除【${item.lesson_section}】的分析报告吗？\n删除后无法恢复！`)) {
+    return
+  }
+
+  try {
+    await axios.post('http://localhost:5002/api/report/delete', {
+      report_id: item.id
+    })
+    alert('删除成功！')
+    fetchTeacherReports()
+  } catch (err) {
+    alert('删除失败')
+    console.error(err)
+  }
+}
+
+// 模型切换
 async function fetchModels() {
   const r = await axios.get('http://localhost:5002/get_models')
   modelOptions.value = r.data.models
@@ -280,7 +300,6 @@ td {
   text-align: center;
 }
 
-/* 折叠卡片 */
 .collapse-card {
   margin-bottom: 12px;
   border: 1px solid #eee;
@@ -309,12 +328,24 @@ td {
   border-bottom: 1px solid #f0f0f0;
 }
 
+.action-buttons {
+  display: flex;
+  gap: 8px;
+}
+
 .btn-sm {
   padding: 6px 12px;
   background: #e6f7ff;
   border: 1px solid #91d5ff;
   border-radius: 6px;
   cursor: pointer;
+}
+
+/* 🔥 删除按钮样式 */
+.btn-delete {
+  background: #fff2f2;
+  border-color: #ffadad;
+  color: #e53935;
 }
 
 .time {

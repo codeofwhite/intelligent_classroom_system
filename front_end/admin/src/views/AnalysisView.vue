@@ -172,16 +172,23 @@ async function saveStudentBind() {
   showBindPopup.value = false
 }
 
-// MD渲染
+// MD渲染（完整版：支持加粗、标题、列表、换行）
 function renderMarkdown(md) {
   if (!md) return ''
+
   let html = md
+    // 1. 加粗 **文字** → <strong>
+    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+    // 2. 换行
     .replace(/\n/g, '<br>')
+    // 3. 标题
     .replace(/### (.*?)(<br>|$)/g, '<h3>$1</h3>')
     .replace(/## (.*?)(<br>|$)/g, '<h2>$1</h2>')
     .replace(/# (.*?)(<br>|$)/g, '<h1>$1</h1>')
+    // 4. 有序/无序列表
     .replace(/\d+\. (.*?)(<br>|$)/g, '<div style="margin-left:16px">$1</div>')
     .replace(/- (.*?)(<br>|$)/g, '<div style="margin-left:16px">$1</div>')
+
   return html
 }
 
@@ -275,9 +282,8 @@ watch(stats, () => {
   text-align: center;
 }
 
-.ai-markdown {
-  line-height: 1.7;
-  font-size: 15px;
-  color: #333;
+.ai-markdown strong {
+  font-weight: bold;
+  color: #2c3e50;
 }
 </style>
