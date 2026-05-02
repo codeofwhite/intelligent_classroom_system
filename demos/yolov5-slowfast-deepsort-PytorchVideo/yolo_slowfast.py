@@ -186,12 +186,13 @@ def main(config):
 if __name__=="__main__":
     # 1. 定义命令行参数
     parser = argparse.ArgumentParser()
-    parser.add_argument('--input', type=str, default="demo/test.mp4", help='输入视频路径')
+    parser.add_argument('--input', type=str, default="demo/test3.mp4", help='输入视频路径')
     parser.add_argument('--output', type=str, default="output.mp4", help='输出视频路径')
     parser.add_argument('--imsize', type=int, default=640, help='推理尺寸')
     parser.add_argument('--conf', type=float, default=0.4, help='检测置信度阈值')
     parser.add_argument('--iou', type=float, default=0.4, help='NMS的IOU阈值')
     parser.add_argument('--device', default='cpu', help='运行设备（cuda/cpu）')
+    # --classes 0
     parser.add_argument('--classes', nargs='+', type=int, help='过滤检测类别（如--classes 0 只检测人）')
     config = parser.parse_args()  # 解析参数
     
