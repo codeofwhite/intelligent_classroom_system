@@ -1,6 +1,5 @@
 import os
 import cv2
-import uuid
 import json
 import csv
 import sys
@@ -16,6 +15,32 @@ from minio import Minio
 from chat_agent import chat_agent_api, get_session_messages, get_teacher_sessions
 from datetime import datetime
 import io
+import numpy as np
+from pose_utils import get_behavior, load_face_database, known_encodings, known_ids, POSE_CONF
+import face_recognition
+
+# ========================
+# 🔌 可扩展模型 + 标签配置（核心！）
+# ========================
+MODEL_CONFIGS = {
+    "best_last_openvino_model": {
+        "task": "detect",
+        "labels_en": ["Raising-Hand", "Reading", "Writing", "Useing-Phone", "Head-down", "Sleep"],
+        "labels_cn": ["举手", "看书", "写字", "使用手机", "低头做其他事情", "睡觉"],
+        "focus": ["Raising-Hand", "Reading", "Writing"],
+        "distract": ["Useing-Phone", "Head-down", "Sleep"],
+    },
+    "yolov8n-pose_openvino_model": {
+        "task": "pose",
+        "labels_en": ["normal posture", "raised hand", "looking down"],
+        "labels_cn": ["正常坐姿", "举手", "低头"],
+        "focus": ["normal posture", "raised hand"],
+        "distract": ["looking down"],
+    }
+}
+
+# 当前模型配置（自动跟随切换）
+current_model_config = None
 
 DB_CONFIG = {
     "host": "localhost",
@@ -32,12 +57,6 @@ db = pymysql.connect(
     database="user_center_db",
     charset='utf8mb4'
 )
-
-# ==========================
-# 全局关键帧配置（全班分心才截图）
-# ==========================
-FOCUS_BEHAVIOR = ["Raising-Hand", "Reading", "Writing"]
-DISTRACT_BEHAVIOR = ["Useing-Phone", "Head-down", "Sleep"]
 
 GLOBAL_DISTRACT_NUM = 2
 KEY_FRAME_INTERVAL = 30
@@ -65,9 +84,17 @@ app.config['DEBUG'] = True
 CORS(app)
 
 MODELS_DIR = "models"
-available_models = [d for d in os.listdir(MODELS_DIR) if os.path.isdir(os.path.join(MODELS_DIR, d))]
+available_models = list(MODEL_CONFIGS.keys())  # 从配置里读，更干净
 current_model_name = available_models[0] if available_models else None
-model = YOLO(os.path.join(MODELS_DIR, current_model_name), task='detect') if current_model_name else None
+model = None
+current_model_config = None
+
+if current_model_name:
+    current_model_config = MODEL_CONFIGS[current_model_name]
+    model = YOLO(
+        os.path.join(MODELS_DIR, current_model_name),
+        task=current_model_config['task']
+    )
 
 minio_client = Minio(
     "minio:9000",
@@ -334,14 +361,25 @@ def get_models():
 
 @app.route('/switch_model', methods=['POST'])
 def switch_model():
-    global model, current_model_name
+    global model, current_model_name, current_model_config
     target_model = request.json.get('model_name')
-    if target_model not in os.listdir(MODELS_DIR):
-        return jsonify({"status": "error", "msg": "模型不存在"}), 404
+    
+    if target_model not in MODEL_CONFIGS:
+        return jsonify({"status": "error", "msg": "模型未配置，请先在 MODEL_CONFIGS 中定义"}), 404
+    
     try:
-        model = YOLO(os.path.join(MODELS_DIR, target_model), task='detect')
+        cfg = MODEL_CONFIGS[target_model]
+        model_path = os.path.join(MODELS_DIR, target_model)
+        model = YOLO(model_path, task=cfg['task'])
+        
         current_model_name = target_model
-        return jsonify({"status": "success", "current": current_model_name})
+        current_model_config = cfg  # 自动绑定标签配置
+        
+        return jsonify({
+            "status": "success",
+            "current": current_model_name,
+            "labels": cfg['labels_cn']
+        })
     except Exception as e:
         return jsonify({"status": "error", "msg": str(e)}), 500
 
@@ -356,45 +394,120 @@ def upload_video():
     teacher_code = request.form.get('teacher_code')
     class_id = request.form.get('class_id')
     lesson_section = request.form.get('lesson_section')
-
     file = request.files['video']
-    CLASS_NAMES_EN = ["Raising-Hand", "Reading", "Writing", "Useing-Phone", "Head-down", "Sleep"]
-    CLASS_NAMES_CN = ["举手", "看书", "写字", "使用手机", "低头做其他事情", "睡觉"]
+
+    # 动态从当前模型配置获取标签
+    if current_model_config is None:
+        return jsonify({"error": "No model selected"}), 400
+
+    CLASS_NAMES_EN = current_model_config["labels_en"]
+    CLASS_NAMES_CN = current_model_config["labels_cn"]
+    FOCUS_BEHAVIOR = current_model_config["focus"]
+    DISTRACT_BEHAVIOR = current_model_config["distract"]
+    task_type = current_model_config["task"]  # detect or pose
 
     total_count = {cls: 0 for cls in CLASS_NAMES_CN}
-    
-    # 按照学生的 id 统计
     student_behaviors = {}
-    
     frame_count = 0
     behavior_data = []
 
+    # 改用项目目录下的临时文件夹，彻底解决 WinError 267
+    base_tmp = "./tmp_upload"
+    os.makedirs(base_tmp, exist_ok=True)
+
+    input_path = os.path.join(base_tmp, "input.mp4")
+    output_path = os.path.join(base_tmp, "output.mp4")
+    csv_path = os.path.join(base_tmp, "tracks.csv")
+    json_path = os.path.join(base_tmp, "result.json")
+
     try:
-        with tempfile.TemporaryDirectory() as tmpdirname:
-            input_path = os.path.join(tmpdirname, "input.mp4")
-            output_path = os.path.join(tmpdirname, "output.mp4")
-            csv_path = os.path.join(tmpdirname, "tracks.csv")
-            json_path = os.path.join(tmpdirname, "result.json")
-            file.save(input_path)
+        # 强制保存 + 确保文件写入
+        file.save(input_path)
+        import time
+        time.sleep(0.1)
 
-            cap = cv2.VideoCapture(input_path)
-            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-            fps = cap.get(cv2.CAP_PROP_FPS) or 25
+        cap = cv2.VideoCapture(input_path)
+        width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+        height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+        fps = cap.get(cv2.CAP_PROP_FPS) or 25
 
-            # ✅ 修复编码器
-            fourcc = cv2.VideoWriter_fourcc(*'avc1')  # 使用更通用的编码器
-            out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
+        fourcc = cv2.VideoWriter_fourcc(*'avc1')
+        out = cv2.VideoWriter(output_path, fourcc, fps, (width, height))
 
-            tracker = BYTETracker(ByteTrackArgs())
-            track_history = {}
+        tracker = BYTETracker(ByteTrackArgs())
+        track_history = {}
 
-            while cap.isOpened():
-                ret, frame = cap.read()
-                if not ret:
-                    break
-                frame_count += 1
+        while cap.isOpened():
+            ret, frame = cap.read()
+            if not ret:
+                break
+            frame_count += 1
 
+            # ==============================================
+            # 🔥 分支 1：POSE 模型（姿态 + 人脸识别）
+            # ==============================================
+            if task_type == "pose":
+                rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+                # 1. 人脸识别
+                face_ids = {}
+                
+                if frame_count % 10 == 0:
+                    face_locs = face_recognition.face_locations(rgb, model="hog")
+                    face_encs = face_recognition.face_encodings(rgb, face_locs)
+                    
+                    for (top, right, bottom, left), enc in zip(face_locs, face_encs):
+                        sid = "unknown"
+                        if known_encodings:
+                            dists = face_recognition.face_distance(known_encodings, enc)
+                            if len(dists) > 0 and dists.min() < 0.5:
+                                sid = known_ids[np.argmin(dists)]
+                        face_ids[(left, top, right, bottom)] = sid
+                        cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
+                        cv2.putText(frame, sid, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
+
+                # 2. YOLO-Pose 推理
+                pose_results = model(frame, conf=POSE_CONF)
+                for res in pose_results:
+                    for box, kp in zip(res.boxes.xyxy, res.keypoints):
+                        keypoints = kp.data.cpu().numpy().squeeze()
+                        behavior = get_behavior(keypoints)
+                        x1, y1, x2, y2 = map(int, box)
+                        cx = (x1 + x2) / 2
+                        cy = (y1 + y2) / 2
+
+                        # 匹配人脸ID
+                        student_id = "unknown"
+                        for (fl, ft, fr, fb), sid in face_ids.items():
+                            cx2 = (fl + fr) / 2
+                            cy2 = (ft + fb) / 2
+                            if abs(cx - cx2) < 80 and abs(cy - cy2) < 80:
+                                student_id = sid
+                                break
+
+                        # 统计
+                        try:
+                            idx = CLASS_NAMES_EN.index(behavior)
+                            cn_lbl = CLASS_NAMES_CN[idx]
+                            total_count[cn_lbl] += 1
+                        except:
+                            cn_lbl = behavior
+
+                        # 绘制
+                        cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
+                        cv2.putText(frame, f"{student_id}:{behavior}", (x1, y1 - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
+
+                        # 记录日志
+                        behavior_data.append([
+                            frame_count, student_id, behavior, 1.0, int(cx), int(cy),
+                            time.strftime("%Y-%m-%d %H:%M:%S")
+                        ])
+
+            # ==============================================
+            # 🔥 分支 2：普通 YOLO 检测（你原来的逻辑）
+            # ==============================================
+            else:
                 results = model.predict(frame, verbose=False, conf=0.25)
                 det = results[0].boxes.data.cpu().numpy()
                 curr_distract_count = 0
@@ -411,9 +524,9 @@ def upload_video():
                         best_cls = 0
                         min_dist = 1e9
                         for d in det:
-                            dcx = (d[0]+d[2])/2
-                            dcy = (d[1]+d[3])/2
-                            dist = (cx - dcx)**2 + (cy - dcy)**2
+                            dcx = (d[0] + d[2]) / 2
+                            dcy = (d[1] + d[3]) / 2
+                            dist = (cx - dcx) ** 2 + (cy - dcy) ** 2
                             if dist < min_dist:
                                 min_dist = dist
                                 best_cls = int(d[5])
@@ -424,13 +537,10 @@ def upload_video():
 
                         if 0 <= best_cls < len(CLASS_NAMES_CN):
                             cn_name = CLASS_NAMES_CN[best_cls]
-                            total_count[CLASS_NAMES_CN[best_cls]] += 1
-                            
-                            # ======================
-                            # 🔥 按学生单独统计
-                            # ======================
+                            total_count[cn_name] += 1
+
                             if str(tid) not in student_behaviors:
-                                student_behaviors[str(tid)] = {c:0 for c in CLASS_NAMES_CN}
+                                student_behaviors[str(tid)] = {c: 0 for c in CLASS_NAMES_CN}
                             student_behaviors[str(tid)][cn_name] += 1
 
                         label = results[0].names[best_cls]
@@ -441,7 +551,8 @@ def upload_video():
 
                         color = get_color(best_cls)
                         cv2.rectangle(frame, (x1, y1), (x2, y2), color, 2)
-                        cv2.putText(frame, f"ID{tid} {final_label}", (x1, y1-10), cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
+                        cv2.putText(frame, f"ID{tid} {final_label}", (x1, y1 - 10),
+                                    cv2.FONT_HERSHEY_SIMPLEX, 0.6, color, 2)
 
                         behavior_data.append([
                             frame_count, tid, final_label,
@@ -451,99 +562,89 @@ def upload_video():
 
                     global last_capture_frame
                     if (frame_count - last_capture_frame >= KEY_FRAME_INTERVAL and
-                        curr_distract_count >= GLOBAL_DISTRACT_NUM):
+                            curr_distract_count >= GLOBAL_DISTRACT_NUM):
                         key_frame_name = f"global_frame_{frame_count}_distract_{curr_distract_count}.jpg"
                         key_frame_path = os.path.join(KEY_FRAME_SAVE_DIR, key_frame_name)
                         cv2.imwrite(key_frame_path, frame)
                         last_capture_frame = frame_count
 
-                out.write(frame)
+            out.write(frame)
 
-            cap.release()
-            out.release()
+        cap.release()
+        out.release()
 
-            with open(csv_path, 'w', newline='', encoding='utf-8') as f:
-                writer = csv.writer(f)
-                writer.writerow(['frame_id','student_id','behavior_label','confidence','cx','cy','timestamp'])
-                writer.writerows(behavior_data)
+        # 保存 CSV
+        with open(csv_path, 'w', newline='', encoding='utf-8') as f:
+            writer = csv.writer(f)
+            writer.writerow(['frame_id', 'student_id', 'behavior_label', 'confidence', 'cx', 'cy', 'timestamp'])
+            writer.writerows(behavior_data)
 
-            statistics = {
-                "total_frames": frame_count,
-                "behavior_counts": total_count,
-                "student_behaviors": student_behaviors,  # 🔥 保存单人数据
-                "analyze_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-            }
-            with open(json_path, 'w', encoding='utf-8') as f:
-                json.dump(statistics, f, ensure_ascii=False, indent=2)
+        # 保存 JSON
+        statistics = {
+            "total_frames": frame_count,
+            "behavior_counts": total_count,
+            "student_behaviors": student_behaviors,
+            "analyze_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
+            "model_used": current_model_name
+        }
+        with open(json_path, 'w', encoding='utf-8') as f:
+            json.dump(statistics, f, ensure_ascii=False, indent=2)
 
-            time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-            base = f"teacher_{teacher_code}/class_{class_id}/{time_str}_{lesson_section}"
+        # 上传 MINIO
+        time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
+        base = f"teacher_{teacher_code}/class_{class_id}/{time_str}_{lesson_section}"
+        video_obj = f"{base}/output.mp4"
+        json_obj = f"{base}/stats.json"
+        csv_obj = f"{base}/tracks.csv"
 
-            video_obj = f"{base}/output.mp4"
-            json_obj = f"{base}/stats.json"
-            csv_obj = f"{base}/tracks.csv"
-
-            # ======================
-            # 🔥 上传关键帧到 MINIO（我加的）
-            # ======================
-            key_frame_local_path = None
-            key_frame_minio_path = None
-
-            import glob
-            key_frames = glob.glob(os.path.join(KEY_FRAME_SAVE_DIR, f"global_frame_*.jpg"))
-            if key_frames:
-                # 取最新一张关键帧
-                key_frames.sort(reverse=True)
-                key_frame_local_path = key_frames[0]
-                key_frame_minio_path = f"{base}/keyframe.jpg"
-
-                try:
-                    minio_client.fput_object(
-                        BUCKET_NAME,
-                        key_frame_minio_path,
-                        key_frame_local_path
-                    )
-                    print("✅ 关键帧已上传 MinIO")
-                except Exception as e:
-                    print("❌ 关键帧上传失败", e)
-
-            # ✅ 安全上传视频、JSON、CSV
+        key_frame_minio_path = None
+        import glob
+        key_frames = glob.glob(os.path.join(KEY_FRAME_SAVE_DIR, "global_frame_*.jpg"))
+        if key_frames:
+            key_frames.sort(reverse=True)
+            key_frame_local_path = key_frames[0]
+            key_frame_minio_path = f"{base}/keyframe.jpg"
             try:
-                minio_client.fput_object(BUCKET_NAME, video_obj, output_path)
-                minio_client.fput_object(BUCKET_NAME, json_obj, json_path)
-                minio_client.fput_object(BUCKET_NAME, csv_obj, csv_path)
-            except Exception as e:
-                print("MINIO UPLOAD ERROR:", e)
+                minio_client.fput_object(BUCKET_NAME, key_frame_minio_path, key_frame_local_path)
+            except:
+                pass
 
-            # ✅ 安全写数据库（加入关键帧路径）
-            try:
-                cursor = db.cursor()
-                class_id_int = int(class_id)
-                
-                report_code = f"R{datetime.now().strftime('%Y%m%d%H%M%S')}"
-                
-                cursor.execute("""
-                    INSERT INTO course_reports
-                    (report_code, teacher_code, class_id, lesson_section, 
-                    minio_video_path, minio_json_path, minio_csv_path, minio_keyframe_path)
-                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
-                """, (
-                    report_code, teacher_code, class_id_int, lesson_section,
-                    video_obj, json_obj, csv_obj, key_frame_minio_path
-                ))
-                
-                db.commit()
-                cursor.close()
-                print("✅ 数据库插入成功 + 关键帧已记录")
-            except Exception as e:
-                print("❌ DB ERROR:", e)
+        # 上传文件
+        try:
+            minio_client.fput_object(BUCKET_NAME, video_obj, output_path)
+            minio_client.fput_object(BUCKET_NAME, json_obj, json_path)
+            minio_client.fput_object(BUCKET_NAME, csv_obj, csv_path)
+        except Exception as e:
+            print("MINIO ERROR:", e)
 
-            return jsonify({
-                "status": "success",
-                "statistics": statistics
-            })
+        # 写入数据库
+        try:
+            cursor = db.cursor()
+            report_code = f"R{datetime.now().strftime('%Y%m%d%H%M%S')}"
+            cursor.execute("""
+                INSERT INTO course_reports
+                (report_code, teacher_code, class_id, lesson_section, 
+                minio_video_path, minio_json_path, minio_csv_path, minio_keyframe_path)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
+            """, (
+                report_code, teacher_code, int(class_id), lesson_section,
+                video_obj, json_obj, csv_obj, key_frame_minio_path
+            ))
+            db.commit()
+            cursor.close()
+        except Exception as e:
+            print("DB ERROR:", e)
+
+        return jsonify({
+            "status": "success",
+            "model": current_model_name,
+            "statistics": statistics
+        })
+
     except Exception as e:
-        print("FINAL ERROR:", e)  # 🔥 这里会打印真实错误
+        print("FINAL ERROR:", e)
+        import traceback
+        traceback.print_exc()
         return jsonify({"error": str(e)}), 500
 
 # 获取本节课所有学生的 track_id

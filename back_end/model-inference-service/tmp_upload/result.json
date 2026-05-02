@@ -1,0 +1,11 @@
+{
+  "total_frames": 215,
+  "behavior_counts": {
+    "正常坐姿": 681,
+    "举手": 759,
+    "低头": 23
+  },
+  "student_behaviors": {},
+  "analyze_time": "2026-05-02 21:00:48",
+  "model_used": "yolov8n-pose_openvino_model"
+}
