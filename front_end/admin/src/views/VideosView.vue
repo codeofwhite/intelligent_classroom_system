@@ -11,9 +11,10 @@
       <div class="upload-form">
 
         <select v-model="classId" class="select-input">
-          <option value="1">高一(1)班</option>
-          <option value="2">高一(2)班</option>
-          <option value="3">高一(3)班</option>
+          <option value="">-- 选择班级 --</option>
+          <option v-for="c in classList" :key="c.class_code" :value="c.class_code">
+            {{ c.class_name }}
+          </option>
         </select>
 
         <input v-model="lessonSection" class="select-input" placeholder="节次：如 第1节" />
@@ -106,7 +107,7 @@ const statistics = ref(null)
 const modelOptions = ref([])
 const selectedModel = ref('')
 
-const classId = ref('1')
+const classId = ref('')
 const lessonSection = ref('第1节')
 const recordDate = ref('')
 const teacherCode = ref('T2025001')
@@ -114,24 +115,35 @@ const teacherCode = ref('T2025001')
 const reportList = ref([])
 const openGroups = ref({})
 
-const CLASS_MAP = {
-  1: "高一(1)班",
-  2: "高一(2)班",
-  3: "高一(3)班"
+const classList = ref([])
+
+// 加载所有班级
+const loadClassList = async () => {
+  try {
+    const { data } = await axios.get('http://localhost:5002/api/class/list')
+    classList.value = data.list || []
+  } catch (err) {
+    console.error('加载班级失败', err)
+  }
 }
 
 const dateClassGroups = computed(() => {
   const groups = {}
   reportList.value.forEach(r => {
     const date = r.created_at.split(' ')[0]
-    const key = `${date}_${r.class_id}`
+    const realClassCode = r.class_code || r.class_id
+    const key = `${date}_${realClassCode}`
+
+    // 安全查找班级
+    const cls = classList.value.find(item => item.class_code === realClassCode)
+    const className = cls ? cls.class_name : '未知班级'
 
     if (!groups[key]) {
       groups[key] = {
-        key,
-        date,
-        classId: r.class_id,
-        className: CLASS_MAP[r.class_id],
+        key: key,
+        date: date,
+        classId: realClassCode,
+        className: className,
         list: [],
         open: openGroups.value[key] || false
       }
@@ -172,13 +184,18 @@ function onFileChange(e) {
 }
 
 async function startAnalysis() {
+  console.log("当前选中班级：", classId.value)
   if (!videoFile.value) return alert('请选择视频')
+  if (!classId.value) return alert('请选择班级')
+  if (!recordDate.value) return alert('请选择日期')
+
   loading.value = true
   const fd = new FormData()
   fd.append('video', videoFile.value)
   fd.append('teacher_code', teacherCode.value)
-  fd.append('class_id', classId.value)
+  fd.append('class_code', classId.value)
   fd.append('lesson_section', lessonSection.value)
+  fd.append('lesson_date', recordDate.value) // ✅ 加这行！
 
   try {
     const res = await axios.post('http://localhost:5002/upload_video', fd)
@@ -234,6 +251,7 @@ async function switchModel() {
 onMounted(() => {
   fetchModels()
   fetchTeacherReports()
+  loadClassList() // ✅ 加这行
 })
 </script>
 

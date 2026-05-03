@@ -28,11 +28,11 @@
     }
   },
   "face_ids": [
-    "stu_005",
-    "stu_004",
     "stu_006",
-    "stu_003"
+    "stu_005",
+    "stu_003",
+    "stu_004"
   ],
-  "analyze_time": "2026-05-03 16:20:40",
+  "analyze_time": "2026-05-03 21:16:51",
   "model_used": "yolov8n-pose_openvino_model"
 }

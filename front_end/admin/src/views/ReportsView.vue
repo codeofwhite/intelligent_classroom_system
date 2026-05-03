@@ -7,7 +7,7 @@
       班级：
       <select v-model="classId" @change="loadStudents" style="padding: 6px 12px; border-radius: 6px;">
         <option value="">-- 选择班级 --</option>
-        <option v-for="c in classList" :key="c.id" :value="c.id">
+        <option v-for="c in classList" :key="c.class_code" :value="c.class_code">
           {{ c.class_name }}
         </option>
       </select>
@@ -21,8 +21,8 @@
     <div class="student-list" v-if="classId">
       <h4>选择学生</h4>
       <div class="grid">
-        <button v-for="s in studentList" :key="s.id" class="student-btn"
-          :class="{ active: selectedStudent?.id === s.id }" @click="selectStudent(s)">
+        <button v-for="s in studentList" :key="s.student_code" class="student-btn"
+          :class="{ active: selectedStudent?.student_code === s.student_code }" @click="selectStudent(s)">
           {{ s.name }}
         </button>
       </div>
@@ -116,7 +116,7 @@ const loadStudents = async () => {
   if (!classId.value) return
   try {
     const res = await axios.get('http://localhost:5002/api/class/students', {
-      params: { class_id: classId.value }
+      params: { class_code: classId.value }
     })
     studentList.value = res.data.students || []
   } catch (err) {
@@ -134,7 +134,7 @@ const selectStudent = async (stu) => {
 
   try {
     const faceRes = await axios.get('http://localhost:5002/api/face/by_student', {
-      params: { student_id: stu.id }
+      params: { student_code: stu.student_code }
     })
     const faceId = faceRes.data.face_id
 
@@ -145,7 +145,7 @@ const selectStudent = async (stu) => {
     }
 
     const reportRes = await axios.get('http://localhost:5002/api/student/behavior', {
-      params: { class_id: classId.value, face_id: faceId }
+      params: { class_code: classId.value, face_id: faceId }
     })
 
     const b = reportRes.data.behaviors || {}
@@ -169,7 +169,7 @@ const loadHistoryReport = async (studentCode) => {
     const res = await axios.get('http://localhost:5002/api/report/history', {
       params: {
         student_code: studentCode,
-        class_id: classId.value
+        class_code: classId.value
       }
     })
     historyList.value = res.data.list || []
@@ -180,7 +180,7 @@ const loadHistoryReport = async (studentCode) => {
 
 // 点击历史记录，回填到编辑框
 const fillReport = (item) => {
-  lessonTime.value = item.lesson_time.slice(0,16)
+  lessonTime.value = item.lesson_time.slice(0, 16)
   aiComment.value = item.ai_comment || ''
   score.value = item.teacher_score || ''
   teacherComment.value = item.teacher_comment || ''
@@ -217,7 +217,7 @@ const saveReport = async () => {
   try {
     await axios.post('http://localhost:5002/api/report/save', {
       student_code: selectedStudent.value.student_code, // ✅ 正确
-      class_id: classId.value,
+      class_code: classId.value,
       lesson_time: lessonTime.value,
       normal_posture: reportData.value.normal,
       raised_hand: reportData.value.raised_hand,
@@ -344,8 +344,9 @@ onMounted(() => {
   padding: 20px;
   border-radius: 12px;
   margin-top: 20px;
-  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
 }
+
 .history-item {
   border: 1px solid #eee;
   border-radius: 8px;
@@ -353,17 +354,21 @@ onMounted(() => {
   margin-bottom: 10px;
   cursor: pointer;
 }
+
 .history-item:hover {
   background: #f8f9fa;
 }
+
 .time {
   color: #666;
   font-size: 14px;
   margin-bottom: 4px;
 }
+
 .line {
   margin: 4px 0;
 }
+
 .comment {
   color: #888;
   font-size: 14px;

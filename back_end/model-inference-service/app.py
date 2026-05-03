@@ -163,7 +163,7 @@ def start_record():
     
     data = request.json
     teacher_code = data.get("teacher_code", "T2025001")
-    class_id = data.get("class_id", 1)
+    class_code = data.get("class_code", 1)
     lesson_section = data.get("lesson_section", "实时课堂")
 
     # 初始化视频保存
@@ -205,13 +205,13 @@ def stop_record():
 
     data = request.json
     teacher_code = data.get("teacher_code", "T2025001")
-    class_id = data.get("class_id", 1)
+    class_code = data.get("class_code", 1)
     lesson_section = data.get("lesson_section", "实时课堂")
 
     # 自动上传逻辑（和你 upload 接口一模一样）
     try:
         time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base = f"teacher_{teacher_code}/class_{class_id}/{time_str}_{lesson_section}"
+        base = f"teacher_{teacher_code}/class_{class_code}/{time_str}_{lesson_section}"
         video_obj = f"{base}/live.mp4"
         json_obj = f"{base}/live_stats.json"
 
@@ -243,9 +243,9 @@ def stop_record():
         report_code = f"R{datetime.now().strftime('%Y%m%d%H%M%S')}"
         cursor.execute("""
             INSERT INTO course_reports
-            (report_code, teacher_code, class_id, lesson_section, minio_video_path, minio_json_path, minio_csv_path)
+            (report_code, teacher_code, class_code, lesson_section, minio_video_path, minio_json_path, minio_csv_path)
             VALUES (%s,%s,%s,%s,%s,%s,'')
-        """, (report_code, teacher_code, int(class_id), lesson_section, video_obj, json_obj))
+        """, (report_code, teacher_code, int(class_code), lesson_section, video_obj, json_obj))
         db_temp.commit()
         cursor.close()
         db_temp.close()
@@ -404,7 +404,7 @@ def upload_video():
         return jsonify({"error": "No video uploaded"}), 400
 
     teacher_code = request.form.get('teacher_code')
-    class_id = request.form.get('class_id')
+    class_code = request.form.get('class_code')
     lesson_section = request.form.get('lesson_section')
     file = request.files['video']
 
@@ -493,22 +493,22 @@ def upload_video():
                         cy = (y1 + y2) / 2
 
                         # 匹配人脸ID
-                        student_id = "unknown"
+                        student_code = "unknown"
                         for (fl, ft, fr, fb), sid in face_ids.items():
                             cx2 = (fl + fr) / 2
                             cy2 = (ft + fb) / 2
                             if abs(cx - cx2) < 80 and abs(cy - cy2) < 80:
-                                student_id = sid
+                                student_code = sid
                                 break
                         
-                        if student_id != "unknown":
-                            if student_id not in student_behaviors:
-                                student_behaviors[student_id] = {cls: 0 for cls in CLASS_NAMES_CN}
+                        if student_code != "unknown":
+                            if student_code not in student_behaviors:
+                                student_behaviors[student_code] = {cls: 0 for cls in CLASS_NAMES_CN}
                             # 统计
                             try:
                                 idx = CLASS_NAMES_EN.index(behavior)
                                 cn_lbl = CLASS_NAMES_CN[idx]
-                                student_behaviors[student_id][cn_lbl] += 1
+                                student_behaviors[student_code][cn_lbl] += 1
                             except:
                                 pass
                         
@@ -522,12 +522,12 @@ def upload_video():
 
                         # 绘制
                         cv2.rectangle(frame, (x1, y1), (x2, y2), (255, 0, 0), 2)
-                        cv2.putText(frame, f"{student_id}:{behavior}", (x1, y1 - 10),
+                        cv2.putText(frame, f"{student_code}:{behavior}", (x1, y1 - 10),
                                     cv2.FONT_HERSHEY_SIMPLEX, 0.6, (255, 0, 0), 2)
 
                         # 记录日志
                         behavior_data.append([
-                            frame_count, student_id, behavior, 1.0, int(cx), int(cy),
+                            frame_count, student_code, behavior, 1.0, int(cx), int(cy),
                             time.strftime("%Y-%m-%d %H:%M:%S")
                         ])
 
@@ -603,7 +603,7 @@ def upload_video():
         # 保存 CSV
         with open(csv_path, 'w', newline='', encoding='utf-8') as f:
             writer = csv.writer(f)
-            writer.writerow(['frame_id', 'student_id', 'behavior_label', 'confidence', 'cx', 'cy', 'timestamp'])
+            writer.writerow(['frame_id', 'student_code', 'behavior_label', 'confidence', 'cx', 'cy', 'timestamp'])
             writer.writerows(behavior_data)
 
         # 保存 JSON
@@ -620,7 +620,7 @@ def upload_video():
 
         # 上传 MINIO
         time_str = datetime.now().strftime("%Y%m%d_%H%M%S")
-        base = f"teacher_{teacher_code}/class_{class_id}/{time_str}_{lesson_section}"
+        base = f"teacher_{teacher_code}/class_{class_code}/{time_str}_{lesson_section}"
         video_obj = f"{base}/output.mp4"
         json_obj = f"{base}/stats.json"
         csv_obj = f"{base}/tracks.csv"
@@ -651,11 +651,11 @@ def upload_video():
             report_code = f"R{datetime.now().strftime('%Y%m%d%H%M%S')}"
             cursor.execute("""
                 INSERT INTO course_reports
-                (report_code, teacher_code, class_id, lesson_section, 
+                (report_code, teacher_code, class_code, lesson_section, 
                 minio_video_path, minio_json_path, minio_csv_path, minio_keyframe_path)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s)
             """, (
-                report_code, teacher_code, int(class_id), lesson_section,
+                report_code, teacher_code, class_code, lesson_section,
                 video_obj, json_obj, csv_obj, key_frame_minio_path
             ))
             db.commit()
@@ -677,11 +677,11 @@ def upload_video():
 
 @app.route("/api/face/by_student", methods=["GET"])
 def get_face_by_student():
-    student_id = request.args.get("student_id")
+    student_code = request.args.get("student_code")
     try:
         db_tmp = pymysql.connect(**DB_CONFIG)
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
-        cursor.execute("SELECT face_id FROM face_student_mapping WHERE student_id=%s", (student_id,))
+        cursor.execute("SELECT face_id FROM face_student_mapping WHERE student_code=%s", (student_code,))
         row = cursor.fetchone()
         cursor.close()
         db_tmp.close()
@@ -726,7 +726,7 @@ def get_report_students():
     except:
         return jsonify({"student_ids": []})
     
-# 保存 track_id 和 student_id 的映射关系
+# 保存 track_id 和 student_code 的映射关系
 @app.route("/api/report/bind_student", methods=["POST"])
 def bind_student():
     report_id = request.json.get("report_id")
@@ -761,7 +761,7 @@ def teacher_reports():
     cursor.execute("""
         SELECT cr.*, c.class_name 
         FROM course_reports cr
-        JOIN classes c ON cr.class_id = c.id
+        JOIN classes c ON cr.class_code = c.class_code
         WHERE cr.teacher_code = %s
         ORDER BY cr.created_at DESC
     """, (teacher_code,))
@@ -795,7 +795,7 @@ def report_detail():
         cursor.execute("""
             SELECT cr.*, c.class_name 
             FROM course_reports cr
-            JOIN classes c ON cr.class_id = c.id
+            JOIN classes c ON cr.class_code = c.class_code
             WHERE cr.id=%s
         """, (report_id,))
         
@@ -839,7 +839,7 @@ def generate_and_save_ai():
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
             SELECT cr.*, c.class_name, cr.teacher_code FROM course_reports cr
-            JOIN classes c ON cr.class_id = c.id WHERE cr.id=%s
+            JOIN classes c ON cr.class_code = c.class_code WHERE cr.id=%s
         """, (report_id,))
         report = cursor.fetchone()
         cursor.close()
@@ -1030,22 +1030,23 @@ def api_course_schedule():
 
 @app.route("/api/face/mapping", methods=["GET"])
 def get_face_mapping():
-    class_id = request.args.get("class_id")
-    if not class_id:
+    class_code = request.args.get("class_code")
+    if not class_code:
         return jsonify({"map": {}})
     try:
         db_tmp = pymysql.connect(**DB_CONFIG)
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT face_id, student_id, student_name
-            FROM face_student_mapping
-            WHERE class_id=%s
-        """, (class_id,))
+            SELECT face_id, s.student_code, fsm.student_name
+            FROM face_student_mapping fsm
+            JOIN students s ON fsm.student_code = s.student_code
+            WHERE fsm.class_code=%s
+        """, (class_code,))
         rows = cursor.fetchall()
         cursor.close()
         db_tmp.close()
         # 转成 {face_id: {id:..., name:...}}
-        mapping = {r["face_id"]: {"id": r["student_id"], "name": r["student_name"]} for r in rows}
+        mapping = {r["face_id"]: {"id": r["student_code"], "name": r["student_name"]} for r in rows}
         return jsonify({"map": mapping})
     except:
         return jsonify({"map": {}})
@@ -1055,9 +1056,9 @@ def get_face_mapping():
 def api_face_bind():
     data = request.json
     face_id = data.get("face_id")
-    student_id = data.get("student_id")  # 👈 学生ID
+    student_code = data.get("student_code")  # 👈 学生ID
     student_name = data.get("student_name")
-    class_id = data.get("class_id", None)
+    class_code = data.get("class_code", None)
 
     if not face_id or not student_name:
         return jsonify({"code": 400, "msg": "参数错误"}), 400
@@ -1067,15 +1068,15 @@ def api_face_bind():
         cursor = db_tmp.cursor()
         cursor.execute("""
             INSERT INTO face_student_mapping
-            (face_id, student_id, student_name, class_id)
+            (face_id, student_code, student_name, class_code)
             VALUES (%s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-                student_id = %s,
+                student_code = %s,
                 student_name = %s,
-                class_id = %s
+                class_code = %s
         """, (
-            face_id, student_id, student_name, class_id,
-            student_id, student_name, class_id
+            face_id, student_code, student_name, class_code,
+            student_code, student_name, class_code
         ))
         db_tmp.commit()
         cursor.close()
@@ -1087,14 +1088,14 @@ def api_face_bind():
 # 接口2：获取某个班级所有已绑定的人脸列表
 @app.route("/api/face/list", methods=["GET"])
 def api_face_list():
-    class_id = request.args.get("class_id", None)
+    class_code = request.args.get("class_code", None)
     try:
         db_tmp = pymysql.connect(**DB_CONFIG)
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
-        sql = "SELECT face_id, student_name, class_id FROM face_student_mapping"
-        if class_id:
-            sql += " WHERE class_id=%s"
-            cursor.execute(sql, (class_id,))
+        sql = "SELECT face_id, student_name, class_code FROM face_student_mapping"
+        if class_code:
+            sql += " WHERE class_code=%s"
+            cursor.execute(sql, (class_code,))
         else:
             cursor.execute(sql)
         rows = cursor.fetchall()
@@ -1111,11 +1112,11 @@ def save_report():
     cursor = db_tmp.cursor()
     cursor.execute("""
         INSERT INTO student_reports
-        (student_code, class_id, lesson_time, normal_posture, raised_hand, looking_down, focus_rate, ai_comment, teacher_score, teacher_comment)
+        (student_code, class_code, lesson_time, normal_posture, raised_hand, looking_down, focus_rate, ai_comment, teacher_score, teacher_comment)
         VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
     """, (
         d["student_code"],  # 👈 改这里
-        d["class_id"], d["lesson_time"],
+        d["class_code"], d["lesson_time"],
         d["normal_posture"], d["raised_hand"], d["looking_down"], d["focus_rate"],
         d["ai_comment"], d["teacher_score"], d["teacher_comment"]
     ))
@@ -1127,15 +1128,15 @@ def save_report():
 @app.route("/api/report/history", methods=["GET"])
 def report_history():
     student_code = request.args.get("student_code")
-    class_id = request.args.get("class_id")
+    class_code = request.args.get("class_code")
     try:
         db_tmp = pymysql.connect(**DB_CONFIG)
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
             SELECT * FROM student_reports
-            WHERE student_code=%s AND class_id=%s
+            WHERE student_code=%s AND class_code=%s
             ORDER BY lesson_time DESC
-        """, (student_code, class_id))
+        """, (student_code, class_code))
         lst = cursor.fetchall()
         cursor.close()
         db_tmp.close()
@@ -1169,10 +1170,10 @@ def my_reports():
 # ========================
 @app.route("/api/student/behavior", methods=["GET"])
 def get_student_behavior():
-    class_id = request.args.get("class_id")
+    class_code = request.args.get("class_code")
     face_id = request.args.get("face_id")
 
-    if not class_id or not face_id:
+    if not class_code or not face_id:
         return jsonify({"error": "缺少参数"}), 400
 
     try:
@@ -1182,8 +1183,8 @@ def get_student_behavior():
         # 查这个班级的所有课堂报告
         cursor.execute("""
             SELECT minio_json_path FROM course_reports
-            WHERE class_id=%s ORDER BY created_at DESC
-        """, (class_id,))
+            WHERE class_code=%s ORDER BY created_at DESC
+        """, (class_code,))
         reports = cursor.fetchall()
         cursor.close()
         db_tmp.close()
@@ -1217,7 +1218,8 @@ def get_class_list():
     try:
         db_tmp = pymysql.connect(**DB_CONFIG)
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
-        cursor.execute("SELECT id, class_name FROM classes")
+        # 👇 这里加上 class_code！！！
+        cursor.execute("SELECT id, class_code, class_name FROM classes")
         class_list = cursor.fetchall()
         cursor.close()
         db_tmp.close()
@@ -1228,19 +1230,19 @@ def get_class_list():
 # 获取班级学生列表（绑定用）
 @app.route("/api/class/students", methods=["GET"])
 def get_class_students():
-    class_id = request.args.get("class_id")
-    if not class_id:
+    class_code = request.args.get("class_code")
+    if not class_code:
         return jsonify({"students": []})
 
     try:
         db_tmp = pymysql.connect(**DB_CONFIG)
         cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT s.id, s.student_code, u.name
+            SELECT s.student_code, u.name
             FROM students s
-            JOIN users u ON s.user_id = u.id
-            WHERE s.class_id = %s
-        """, (class_id,))
+            JOIN users u ON s.user_code = u.user_code
+            WHERE s.class_code = %s
+        """, (class_code,))
         students = cursor.fetchall()
         cursor.close()
         db_tmp.close()
@@ -1255,7 +1257,7 @@ def api_face_batch_import():
         return jsonify({"code": 400, "msg": "请上传文件"}), 400
 
     file = request.files['file']
-    class_id = request.form.get("class_id", None)
+    class_code = request.form.get("class_code", None)
     try:
         import csv
         reader = csv.DictReader(file.read().decode("utf-8").splitlines())
@@ -1266,9 +1268,9 @@ def api_face_batch_import():
             student_name = row.get("student_name")
             if face_id and student_name:
                 cursor.execute("""
-                    INSERT INTO face_student_mapping (face_id, student_name, class_id)
+                    INSERT INTO face_student_mapping (face_id, student_name, class_code)
                     VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE student_name=%s
-                """, (face_id, student_name, class_id, student_name))
+                """, (face_id, student_name, class_code, student_name))
         db_tmp.commit()
         cursor.close()
         db_tmp.close()
@@ -1294,7 +1296,7 @@ def api_face_unbind():
 @app.route("/api/ai/analyze", methods=["POST"])
 def ai_analyze():
     data = request.json
-    student_id = data.get("student_id")
+    student_code = data.get("student_code")
     normal = data.get("normal_posture")
     raised = data.get("raised_hand")
     down = data.get("looking_down")
@@ -1325,15 +1327,15 @@ def ai_analyze():
 
 @app.route("/api/report/list", methods=["GET"])
 def report_list():
-    student_id = request.args.get("student_id")
-    class_id = request.args.get("class_id")
+    student_code = request.args.get("student_code")
+    class_code = request.args.get("class_code")
     db_tmp = pymysql.connect(**DB_CONFIG)
     cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
     cursor.execute("""
         SELECT * FROM student_reports
-        WHERE student_id=%s AND class_id=%s
+        WHERE student_code=%s AND class_code=%s
         ORDER BY lesson_time DESC
-    """, (student_id, class_id))
+    """, (student_code, class_code))
     rows = cursor.fetchall()
     cursor.close()
     db_tmp.close()

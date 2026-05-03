@@ -19,7 +19,7 @@
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(s, index) in studentList" :key="s.student_id">
+        <tr v-for="(s, index) in studentList" :key="s.student_code">
           <td>{{ index + 1 }}</td>
           <td>{{ s.student_name }}</td>
           <td>{{ s.gender }}</td>
@@ -46,7 +46,7 @@ const loadData = async () => {
 
   try {
     const { data } = await axios.post('http://localhost:5001/teacher-students', {
-      user_id: userInfo.id
+      user_code: userInfo.user_code
     })
 
     className.value = data.class_name

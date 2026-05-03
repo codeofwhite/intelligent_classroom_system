@@ -14,7 +14,7 @@
           <h2>早安，{{ user.username }}！</h2>
           <p v-if="user.role === 'student'" class="relation-tag">身份：学生</p>
           <p v-else-if="user.role === 'parent'" class="relation-tag">
-            身份：家长（关联学生：{{ relations.map(r => r.username).join(', ') }}）
+            身份：家长（关联学生：{{ children.map(c => c.student_name).join(', ') }}）
           </p>
         </div>
       </div>
@@ -31,22 +31,35 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter } from 'vue-router'
-// 自动引入两个首页组件
+import axios from 'axios'
 import StudentHome from '../components/StudentHome.vue'
 import ParentHome from '../components/ParentHome.vue'
 
 const router = useRouter()
 const user = ref({})
-const relations = ref([])
+const children = ref([]) // 孩子列表（从接口拿）
 const showMenu = ref(false)
 
-onMounted(() => {
+onMounted(async () => {
   const savedUser = localStorage.getItem('currentUser')
-  const savedRelations = localStorage.getItem('currentRelations')
   if (!savedUser) return router.push('/login')
 
   user.value = JSON.parse(savedUser)
-  relations.value = JSON.parse(savedRelations || '[]')
+
+  // ==============================================
+  // ✅ 家长：调用接口加载孩子（真正能显示的版本）
+  // ==============================================
+  if (user.value.role === 'parent') {
+    try {
+      const res = await axios.post('http://localhost:5001/parent-children', {
+        user_code: user.value.user_code
+      })
+      // 接口返回的孩子列表
+      children.value = res.data.children
+    } catch (err) {
+      console.error('获取孩子失败', err)
+    }
+  }
 })
 
 const handleLogout = () => {

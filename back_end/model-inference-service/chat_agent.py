@@ -34,9 +34,9 @@ def tool_get_teacher_all_reports(teacher_code: str):
         db = pymysql.connect(**DB_CONFIG)
         cursor = db.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT cr.id, cr.class_id, cr.lesson_section, cr.created_at, c.class_name
+            SELECT cr.id, cr.class_code, cr.lesson_section, cr.created_at, c.class_name
             FROM course_reports cr
-            JOIN classes c ON cr.class_id = c.id
+            JOIN classes c ON cr.class_code = c.id
             WHERE cr.teacher_code = %s
             ORDER BY cr.created_at DESC
         """, (teacher_code,))
@@ -99,7 +99,7 @@ def tool_get_single_report_detail(report_id: int):
 # ========================
 # 工具 3：获取某班级所有学生列表 ✅ 连表查询版（完全匹配你的表）
 # ========================
-def tool_get_class_students(class_id: int):
+def tool_get_class_students(class_code: int):
     try:
         db = pymysql.connect(**DB_CONFIG)
         cursor = db.cursor(pymysql.cursors.DictCursor)
@@ -111,21 +111,21 @@ def tool_get_class_students(class_id: int):
                 s.age
             FROM students s
             JOIN users u ON s.user_id = u.id
-            WHERE s.class_id = %s 
+            WHERE s.class_code = %s 
             ORDER BY s.id
-        """, (class_id,))
+        """, (class_code,))
         rows = cursor.fetchall()
         cursor.close()
         db.close()
 
         if not rows:
-            return f"班级 {class_id} 暂无学生"
+            return f"班级 {class_code} 暂无学生"
 
         lines = []
         for s in rows:
             lines.append(f"学号:{s['student_code']} | 姓名:{s['name']} | 性别:{s['gender']} | 年龄:{s['age']}")
         
-        return f"班级 {class_id} 学生列表（共{len(rows)}人）：\n" + "\n".join(lines)
+        return f"班级 {class_code} 学生列表（共{len(rows)}人）：\n" + "\n".join(lines)
     except Exception as e:
         return f"获取学生失败：{str(e)}"
 
@@ -150,7 +150,7 @@ def tool_get_time_range_stats(teacher_code: str, time_type: str = "7d"):
         db = pymysql.connect(**DB_CONFIG)
         cursor = db.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT id, created_at, lesson_section, class_id 
+            SELECT id, created_at, lesson_section, class_code 
             FROM course_reports
             WHERE teacher_code = %s AND created_at BETWEEN %s AND %s
             ORDER BY created_at
@@ -273,8 +273,8 @@ TOOLS = [
             "description": "根据班级ID获取该班级所有学生列表",
             "parameters": {
                 "type": "object",
-                "properties": {"class_id": {"type": "integer"}},
-                "required": ["class_id"]
+                "properties": {"class_code": {"type": "integer"}},
+                "required": ["class_code"]
             }
         }
     },
@@ -594,7 +594,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
                 elif func_name == "tool_get_batch_report_detail":
                     tool_result = tool_get_batch_report_detail(args.get("report_ids"))
                 elif func_name == "tool_get_class_students":
-                    tool_result = tool_get_class_students(args.get("class_id"))
+                    tool_result = tool_get_class_students(args.get("class_code"))
                 elif func_name == "tool_get_time_range_stats":
                     tool_result = tool_get_time_range_stats(teacher_code, args.get("time_type", "7d"))
                 elif func_name == "tool_get_class_keyframe":
@@ -667,31 +667,31 @@ def get_teacher_long_memory(teacher_code: str):
         db = pymysql.connect(**DB_CONFIG)
         cursor = db.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT focus_class_ids, focus_report_ids, prefer_question_type
+            SELECT focus_class_codes, focus_report_ids, prefer_question_type
             FROM teacher_long_memory WHERE teacher_code = %s
         """, (teacher_code,))
         row = cursor.fetchone()
         cursor.close()
         db.close()
         if not row:
-            return {"focus_class_ids":"","focus_report_ids":"","prefer_question_type":""}
+            return {"focus_class_codes":"","focus_report_ids":"","prefer_question_type":""}
         return row
     except:
-        return {"focus_class_ids":"","focus_report_ids":"","prefer_question_type":""}
+        return {"focus_class_codes":"","focus_report_ids":"","prefer_question_type":""}
     
-def update_teacher_long_memory(teacher_code: str, class_id=None, report_id=None, q_type=None):
+def update_teacher_long_memory(teacher_code: str, class_code=None, report_id=None, q_type=None):
     try:
         db = pymysql.connect(**DB_CONFIG)
         cursor = db.cursor(pymysql.cursors.DictCursor)
 
         # 先查原有
         old = get_teacher_long_memory(teacher_code)
-        cls_list = old["focus_class_ids"].split(",") if old["focus_class_ids"] else []
+        cls_list = old["focus_class_codes"].split(",") if old["focus_class_codes"] else []
         rep_list = old["focus_report_ids"].split(",") if old["focus_report_ids"] else []
 
         # 追加班级
-        if class_id and str(class_id) not in cls_list:
-            cls_list.append(str(class_id))
+        if class_code and str(class_code) not in cls_list:
+            cls_list.append(str(class_code))
         # 追加报告
         if report_id and str(report_id) not in rep_list:
             rep_list.append(str(report_id))
@@ -703,10 +703,10 @@ def update_teacher_long_memory(teacher_code: str, class_id=None, report_id=None,
         # 存在则更新，不存在则插入
         cursor.execute("""
             INSERT INTO teacher_long_memory
-            (teacher_code, focus_class_ids, focus_report_ids, prefer_question_type)
+            (teacher_code, focus_class_codes, focus_report_ids, prefer_question_type)
             VALUES (%s, %s, %s, %s)
             ON DUPLICATE KEY UPDATE
-            focus_class_ids=%s, focus_report_ids=%s, prefer_question_type=%s, update_time=NOW()
+            focus_class_codes=%s, focus_report_ids=%s, prefer_question_type=%s, update_time=NOW()
         """, (teacher_code, new_cls, new_rep, new_qtype, new_cls, new_rep, new_qtype))
 
         db.commit()
@@ -719,7 +719,7 @@ def build_system_prompt_with_memory(teacher_code: str, base_prompt: str):
     mem = get_teacher_long_memory(teacher_code)
     extra = f"""
 【用户长期习惯记忆】
-常关注班级ID：{mem['focus_class_ids']}
+常关注班级ID：{mem['focus_class_codes']}
 常查看报告ID：{mem['focus_report_ids']}
 偏好问题类型：{mem['prefer_question_type']}
 后续回答优先结合该老师常用班级、常用报告，贴合使用习惯。

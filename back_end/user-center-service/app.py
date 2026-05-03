@@ -21,7 +21,7 @@ def index():
     return "User Center Service Running"
 
 # ==============================
-# 登录接口（全新规范）
+# 登录
 # ==============================
 @app.route('/login', methods=['POST'])
 def login():
@@ -53,7 +53,6 @@ def login():
             teacher_code = None
             parent_code = None
 
-            # 学生
             if role == "student":
                 sql = """
                     SELECT s.student_code, c.class_name, c.grade
@@ -71,7 +70,6 @@ def login():
                         "grade": row["grade"]
                     })
 
-            # 家长
             elif role == "parent":
                 sql = """
                     SELECT parent_code FROM parents WHERE user_code = %s
@@ -81,7 +79,6 @@ def login():
                 if row:
                     parent_code = row["parent_code"]
 
-            # 老师
             elif role == "teacher":
                 sql = """
                     SELECT t.teacher_code, c.class_name, c.grade
@@ -118,24 +115,24 @@ def login():
         conn.close()
 
 # ==============================
-# 家长 → 获取孩子列表
+# 家长获取孩子
 # ==============================
 @app.route('/parent-children', methods=['POST'])
 def parent_children():
     data = request.json
-    user_id = data.get('user_id')
+    user_code = data.get('user_code')
 
     conn = get_db_conn()
     try:
         with conn.cursor() as cursor:
             sql = """
-                SELECT u.user_code, s.student_code, u.name AS student_name
+                SELECT s.student_code, u.name AS student_name
                 FROM parents p
                 JOIN students s ON p.student_code = s.student_code
                 JOIN users u ON s.user_code = u.user_code
                 WHERE p.user_code = %s
             """
-            cursor.execute(sql, (user_id,))
+            cursor.execute(sql, (user_code,))
             children = cursor.fetchall()
 
             return jsonify({
@@ -145,12 +142,12 @@ def parent_children():
         conn.close()
 
 # ==============================
-# 老师 → 获取班级 & 学生
+# 老师班级
 # ==============================
 @app.route('/teacher-class', methods=['POST'])
 def teacher_class():
     data = request.json
-    user_id = data.get('user_id')
+    user_code = data.get('user_code')
 
     conn = get_db_conn()
     try:
@@ -161,7 +158,7 @@ def teacher_class():
                 JOIN classes c ON t.class_code = c.class_code
                 WHERE t.user_code = %s
             """
-            cursor.execute(sql, (user_id,))
+            cursor.execute(sql, (user_code,))
             teacher = cursor.fetchone()
 
             class_code = teacher['class_code']
@@ -188,30 +185,41 @@ def teacher_class():
         conn.close()
 
 # ==============================
-# 老师 → 获取学生 & 家长信息
+# 老师学生列表
 # ==============================
 @app.route('/teacher-students', methods=['POST'])
 def teacher_students():
     data = request.json
-    user_id = data.get('user_id')
+    user_code = data.get('user_code')
+
+    # 🔥 加判空，防止崩溃
+    if not user_code:
+        return jsonify({"class_name": "", "students": []})
 
     conn = get_db_conn()
     try:
         with conn.cursor() as cursor:
+            # 1. 查老师 + 班级
             sql = """
                 SELECT c.class_code, c.class_name
                 FROM teachers t
                 JOIN classes c ON t.class_code = c.class_code
                 WHERE t.user_code = %s
             """
-            cursor.execute(sql, (user_id,))
+            cursor.execute(sql, (user_code,))
             teacher = cursor.fetchone()
+
+            # 🔥 查不到就直接返回空
+            if not teacher:
+                return jsonify({"class_name": "", "students": []})
+
             class_code = teacher['class_code']
             class_name = teacher['class_name']
 
+            # 2. 查班级学生
             sql = """
                 SELECT
-                    s.student_id,
+                    s.student_code,
                     u.name as student_name,
                     s.gender,
                     up.name as parent_name,

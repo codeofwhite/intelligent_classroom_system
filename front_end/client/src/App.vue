@@ -52,6 +52,7 @@
 <script setup>
 import { ref, onMounted } from 'vue'
 import { useRouter, useRoute } from 'vue-router'
+import axios from 'axios'
 
 const router = useRouter()
 const route = useRoute()
@@ -59,11 +60,10 @@ const route = useRoute()
 const isLoggedIn = ref(false)
 const userRole = ref('')
 const userName = ref('')
-const relationText = ref('') // 班级 / 孩子名称
+const relationText = ref('') // 这里最终会显示：孩子：张三、李四
 
-onMounted(() => {
+onMounted(async () => {
   const user = localStorage.getItem('currentUser')
-  const relations = localStorage.getItem('currentRelations')
   if (user) {
     try {
       const u = JSON.parse(user)
@@ -71,44 +71,55 @@ onMounted(() => {
       userRole.value = u.role
       userName.value = u.name
 
-      // 读取关联信息
-      if (relations) {
-        const rel = JSON.parse(relations)
-        if (u.role === 'student') {
-          const cls = rel[0]
-          relationText.value = cls.class_name
-        } else if (u.role === 'parent') {
-          const names = rel.map(r => r.username).join('、')
-          relationText.value = '孩子：' + names
-        }
+      // ==============================================
+      // ✅ 家长：调用接口拿孩子列表（你就是缺这一步！）
+      // ==============================================
+      if (u.role === 'parent') {
+        const res = await axios.post('http://localhost:5001/parent-children', {
+          user_code: u.user_code
+        })
+        const children = res.data.children
+        const names = children.map(c => c.student_name).join('、')
+        relationText.value = '孩子：' + names
       }
-    } catch (e) { }
+
+      // 学生：显示班级（你原来的逻辑可以保留）
+      else if (u.role === 'student') {
+        relationText.value = '' // 你可以后续加班级逻辑
+      }
+
+    } catch (e) {
+      console.error('加载关系失败', e)
+    }
   }
 })
 
-const onLoginSuccess = (userInfo) => {
+// 登录成功后也调用接口加载孩子
+const onLoginSuccess = async (userInfo) => {
   isLoggedIn.value = true
   userRole.value = userInfo.role
   userName.value = userInfo.name
 
-  // 读取关系并显示
-  const rel = JSON.parse(localStorage.getItem('currentRelations') || '[]')
-  if (userInfo.role === 'student') {
-    relationText.value = rel[0]?.class_name || ''
-  } else if (userInfo.role === 'parent') {
-    const names = rel.map(r => r.username).join('、')
-    relationText.value = '孩子：' + names
-  }
+  try {
+    if (userInfo.role === 'parent') {
+      const res = await axios.post('http://localhost:5001/parent-children', {
+        user_code: userInfo.user_code
+      })
+      const children = res.data.children
+      const names = children.map(c => c.student_name).join('、')
+      relationText.value = '孩子：' + names
+    }
+  } catch (e) {}
 
   setTimeout(() => router.push('/'), 10)
 }
 
 const handleLogout = () => {
+  localStorage.clear()
   isLoggedIn.value = false
   userRole.value = ''
   userName.value = ''
   relationText.value = ''
-  localStorage.clear()
   router.push('/login')
 }
 </script>

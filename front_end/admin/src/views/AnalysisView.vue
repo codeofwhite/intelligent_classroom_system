@@ -75,7 +75,7 @@
           <select v-model="bindMap[fid]"
             style="width:100%; padding:10px; margin-top:6px; border:1px solid #ddd; border-radius:8px;">
             <option value="">-- 选择学生 --</option>
-            <option :value="stu" v-for="stu in studentList" :key="stu.id">
+            <option :value="stu" v-for="stu in studentList" :key="stu.student_code">
               {{ stu.name }}
             </option>
           </select>
@@ -161,13 +161,13 @@ async function openBindPopup() {
 
   // 2. 获取本班学生列表
   const stuRes = await axios.get('http://localhost:5002/api/class/students', {
-    params: { class_id: report.value.class_id }
+    params: { class_code: report.value.class_code }
   })
   studentList.value = stuRes.data.students || []
 
   // 3. 关键：加载本班已绑定的人脸→学生映射
   const mapRes = await axios.get('http://localhost:5002/api/face/mapping', {
-    params: { class_id: report.value.class_id }
+    params: { class_code: report.value.class_code }
   })
   const existingMap = mapRes.data.map || {}
 
@@ -175,7 +175,7 @@ async function openBindPopup() {
   for (const fid of faceIds.value) {
     if (existingMap[fid]) {
       // 找到对应的学生对象，塞给 bindMap
-      const stu = studentList.value.find(s => s.id === existingMap[fid].id)
+      const stu = studentList.value.find(s => s.student_code === existingMap[fid].student_code)
       if (stu) bindMap.value[fid] = stu
     }
   }
@@ -189,9 +189,9 @@ async function saveBind() {
 
     await axios.post('http://localhost:5002/api/face/bind', {
       face_id: fid,
-      student_id: stu.id,    // 绑定学生ID
+      student_code: stu.student_code,    // 绑定学生ID
       student_name: stu.name,
-      class_id: report.value.class_id
+      class_code: report.value.class_code
     })
   }
   alert('✅ 人脸绑定学生成功！')
