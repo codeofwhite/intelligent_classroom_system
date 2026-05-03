@@ -2,24 +2,21 @@
   <div class="analysis-page">
     <h2>📊 课堂行为深度分析</h2>
 
-    <!-- 信息卡片 + 绑定按钮 -->
     <div class="card info-card">
       <div>班级：{{ report.class_name }}</div>
       <div>节次：{{ report.lesson_section }}</div>
       <div>总帧数：{{ stats.total_frames || 0 }}</div>
       <button @click="openBindPopup"
         style="padding:8px 16px; background:#ff9800; color:white; border:none; border-radius:8px;cursor:pointer">
-        👤 学生身份绑定
+        👤 人脸身份绑定
       </button>
     </div>
 
-    <!-- 视频 -->
     <div class="card">
       <h3>🎥 分析视频</h3>
       <video v-if="videoUrl" :src="videoUrl" controls class="video"></video>
     </div>
 
-    <!-- 双图表布局 -->
     <div class="chart-row">
       <div class="card chart-box">
         <h3>🥧 行为分布饼图</h3>
@@ -32,7 +29,6 @@
       </div>
     </div>
 
-    <!-- AI 分析 -->
     <div class="card">
       <div style="display: flex; justify-content: space-between; align-items: center;">
         <h3>🤖 AI 智能课堂分析</h3>
@@ -54,7 +50,6 @@
       </div>
     </div>
 
-    <!-- 行为表格 -->
     <div class="card">
       <h3>📋 详细行为统计</h3>
       <table class="table">
@@ -69,18 +64,25 @@
       </table>
     </div>
 
-    <!-- 🔥 学生身份绑定弹窗 -->
+    <!-- 🔥 人脸绑定学生（下拉选择学生ID版） -->
     <div v-if="showBindPopup"
       style="position:fixed; left:0; top:0; width:100vw; height:100vh; background:rgba(0,0,0,0.5); display:flex; justify-content:center; align-items:center; z-index:9999;">
-      <div style="background:white; padding:24px; border-radius:12px; width:420px;">
-        <h3 style="margin-top:0;">👤 绑定学生身份</h3>
-        <div v-for="sid in studentIds" :key="sid" style="margin:12px 0;">
-          <label style="font-weight:bold;">追踪 ID：{{ sid }}</label>
-          <input v-model="bindForm[sid]" placeholder="请输入学生姓名"
+      <div style="background:white; padding:24px; border-radius:12px; width:460px;">
+        <h3 style="margin-top:0;">👤 人脸绑定学生</h3>
+
+        <div v-for="fid in faceIds" :key="fid" style="margin:14px 0;">
+          <label style="font-weight:bold;">人脸 ID：{{ fid }}</label>
+          <select v-model="bindMap[fid]"
             style="width:100%; padding:10px; margin-top:6px; border:1px solid #ddd; border-radius:8px;">
+            <option value="">-- 选择学生 --</option>
+            <option :value="stu" v-for="stu in studentList" :key="stu.id">
+              {{ stu.name }}
+            </option>
+          </select>
         </div>
+
         <div style="text-align:right; margin-top:20px;">
-          <button @click="saveStudentBind"
+          <button @click="saveBind"
             style="padding:8px 16px; background:#409eff; color:white; border:none; border-radius:8px; margin-right:8px;">
             保存绑定
           </button>
@@ -115,12 +117,11 @@ const lineRef = ref(null)
 let pieChart = null
 let lineChart = null
 
-// 🔥 绑定弹窗
 const showBindPopup = ref(false)
-const studentIds = ref([])
-const bindForm = ref({})
+const faceIds = ref([])
+const studentList = ref([]) // 本班学生列表
+const bindMap = ref({})     // 人脸ID → 学生对象
 
-// 加载详情
 async function loadDetail() {
   const res = await axios.get('http://localhost:5002/api/report/detail', {
     params: { id: reportId }
@@ -135,7 +136,6 @@ async function loadDetail() {
   videoUrl.value = u.data
 }
 
-// 生成AI
 async function generateAI() {
   loading.value = true
   try {
@@ -148,51 +148,69 @@ async function generateAI() {
   }
 }
 
-// 打开绑定弹窗
+// 🔥 打开人脸绑定弹窗
 async function openBindPopup() {
   showBindPopup.value = true
-  const res = await axios.get('http://localhost:5002/api/report/students', {
+  bindMap.value = {} // 先清空
+
+  // 1. 获取本节课人脸ID
+  const res = await axios.get('http://localhost:5002/api/report/face_ids', {
     params: { id: reportId }
   })
-  studentIds.value = res.data.student_ids || []
-  bindForm.value = {}
+  faceIds.value = res.data.face_ids || []
+
+  // 2. 获取本班学生列表
+  const stuRes = await axios.get('http://localhost:5002/api/class/students', {
+    params: { class_id: report.value.class_id }
+  })
+  studentList.value = stuRes.data.students || []
+
+  // 3. 关键：加载本班已绑定的人脸→学生映射
+  const mapRes = await axios.get('http://localhost:5002/api/face/mapping', {
+    params: { class_id: report.value.class_id }
+  })
+  const existingMap = mapRes.data.map || {}
+
+  // 4. 回填已绑定的学生
+  for (const fid of faceIds.value) {
+    if (existingMap[fid]) {
+      // 找到对应的学生对象，塞给 bindMap
+      const stu = studentList.value.find(s => s.id === existingMap[fid].id)
+      if (stu) bindMap.value[fid] = stu
+    }
+  }
 }
 
-// 保存绑定
-async function saveStudentBind() {
-  for (const sid of studentIds.value) {
-    const name = bindForm.value[sid] || `学生${sid}`
-    await axios.post('http://localhost:5002/api/report/bind_student', {
-      report_id: reportId,
-      track_id: sid,
-      student_name: name
+// 保存绑定（人脸 ↔ 学生ID）
+async function saveBind() {
+  for (const fid of faceIds.value) {
+    const stu = bindMap.value[fid]
+    if (!stu) continue
+
+    await axios.post('http://localhost:5002/api/face/bind', {
+      face_id: fid,
+      student_id: stu.id,    // 绑定学生ID
+      student_name: stu.name,
+      class_id: report.value.class_id
     })
   }
-  alert('✅ 学生身份绑定成功！')
+  alert('✅ 人脸绑定学生成功！')
   showBindPopup.value = false
 }
 
-// MD渲染（完整版：支持加粗、标题、列表、换行）
 function renderMarkdown(md) {
   if (!md) return ''
-
   let html = md
-    // 1. 加粗 **文字** → <strong>
     .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-    // 2. 换行
     .replace(/\n/g, '<br>')
-    // 3. 标题
     .replace(/### (.*?)(<br>|$)/g, '<h3>$1</h3>')
     .replace(/## (.*?)(<br>|$)/g, '<h2>$1</h2>')
     .replace(/# (.*?)(<br>|$)/g, '<h1>$1</h1>')
-    // 4. 有序/无序列表
     .replace(/\d+\. (.*?)(<br>|$)/g, '<div style="margin-left:16px">$1</div>')
     .replace(/- (.*?)(<br>|$)/g, '<div style="margin-left:16px">$1</div>')
-
   return html
 }
 
-// 图表
 function initCharts() {
   pieChart = echarts.init(pieRef.value)
   lineChart = echarts.init(lineRef.value)

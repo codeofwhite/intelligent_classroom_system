@@ -1,23 +1,35 @@
+# 系统基础库
 import os
-import cv2
-import json
-import csv
 import sys
+import csv
+import json
 import time
+import io
 import tempfile
-import pymysql
+from datetime import datetime
 from collections import deque
-from ai_agent import analyze_class_report
+
+# 科学计算 / 图像处理
+import numpy as np
+import cv2
+import face_recognition
+
+# AI 模型
+from ultralytics import YOLO
+from openai import OpenAI
+
+# 数据库 / 存储
+import pymysql
+from minio import Minio
+
+# Flask 服务
 from flask import Flask, Response, request, jsonify
 from flask_cors import CORS
-from ultralytics import YOLO
-from minio import Minio
-from chat_agent import chat_agent_api, get_session_messages, get_teacher_sessions
-from datetime import datetime
-import io
-import numpy as np
+
+# 自定义工具模块
 from pose_utils import get_behavior, load_face_database, known_encodings, known_ids, POSE_CONF
-import face_recognition
+from ai_agent import analyze_class_report
+from chat_agent import chat_agent_api, get_session_messages, get_teacher_sessions
 
 # ========================
 # 🔌 可扩展模型 + 标签配置（核心！）
@@ -396,6 +408,8 @@ def upload_video():
     lesson_section = request.form.get('lesson_section')
     file = request.files['video']
 
+    face_id_cache = set()
+
     # 动态从当前模型配置获取标签
     if current_model_config is None:
         return jsonify({"error": "No model selected"}), 400
@@ -451,7 +465,6 @@ def upload_video():
 
                 # 1. 人脸识别
                 face_ids = {}
-                
                 if frame_count % 10 == 0:
                     face_locs = face_recognition.face_locations(rgb, model="hog")
                     face_encs = face_recognition.face_encodings(rgb, face_locs)
@@ -463,6 +476,9 @@ def upload_video():
                             if len(dists) > 0 and dists.min() < 0.5:
                                 sid = known_ids[np.argmin(dists)]
                         face_ids[(left, top, right, bottom)] = sid
+                        
+                        if sid != "unknown":
+                            face_id_cache.add(sid)
                         cv2.rectangle(frame, (left, top), (right, bottom), (0, 255, 0), 2)
                         cv2.putText(frame, sid, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
@@ -484,8 +500,19 @@ def upload_video():
                             if abs(cx - cx2) < 80 and abs(cy - cy2) < 80:
                                 student_id = sid
                                 break
-
-                        # 统计
+                        
+                        if student_id != "unknown":
+                            if student_id not in student_behaviors:
+                                student_behaviors[student_id] = {cls: 0 for cls in CLASS_NAMES_CN}
+                            # 统计
+                            try:
+                                idx = CLASS_NAMES_EN.index(behavior)
+                                cn_lbl = CLASS_NAMES_CN[idx]
+                                student_behaviors[student_id][cn_lbl] += 1
+                            except:
+                                pass
+                        
+                        # 全局统计
                         try:
                             idx = CLASS_NAMES_EN.index(behavior)
                             cn_lbl = CLASS_NAMES_CN[idx]
@@ -584,6 +611,7 @@ def upload_video():
             "total_frames": frame_count,
             "behavior_counts": total_count,
             "student_behaviors": student_behaviors,
+            "face_ids": list(face_id_cache),  # 👈 加这个
             "analyze_time": datetime.now().strftime("%Y-%m-%d %H:%M:%S"),
             "model_used": current_model_name
         }
@@ -646,6 +674,38 @@ def upload_video():
         import traceback
         traceback.print_exc()
         return jsonify({"error": str(e)}), 500
+
+@app.route("/api/face/by_student", methods=["GET"])
+def get_face_by_student():
+    student_id = request.args.get("student_id")
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT face_id FROM face_student_mapping WHERE student_id=%s", (student_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"face_id": row["face_id"] if row else None})
+    except:
+        return jsonify({"face_id": None})
+
+@app.route("/api/report/face_ids", methods=["GET"])
+def get_report_face_ids():
+    report_id = request.args.get("id")
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT minio_json_path FROM course_reports WHERE id=%s", (report_id,))
+        report = cursor.fetchone()
+        cursor.close()
+        db_tmp.close()
+
+        data = minio_client.get_object(BUCKET_NAME, report['minio_json_path'])
+        stats = json.loads(data.data)
+        face_ids = stats.get("face_ids", [])
+        return jsonify({"face_ids": face_ids})
+    except:
+        return jsonify({"face_ids": []})
 
 # 获取本节课所有学生的 track_id
 @app.route("/api/report/students", methods=["GET"])
@@ -853,28 +913,6 @@ def get_history_stat(filename):
     except Exception as e:
         return jsonify({"error": str(e)}), 404
 
-# ========================
-# 家长端接口
-# ========================
-@app.route('/api/student/report/<int:student_id>', methods=['GET'])
-def get_student_report(student_id):
-    return {
-        "student_id": student_id,
-        "student_name": "测试学生",
-        "total_frames": 1200,
-        "behavior_counts": {
-            "举手": 8, "看书": 680, "写字": 240,
-            "使用手机": 12, "低头": 36, "睡觉": 4
-        },
-        "analyzed_time": "2026-04-24 22:00:00"
-    }
-
-@app.route('/api/ai_advice', methods=['GET'])
-def get_ai_advice():
-    return jsonify({
-        "summary": "学生课堂专注度良好，存在偶尔低头、使用手机现象，需加强引导。",
-        "advice": "1. 控制电子产品使用\n2. 家校共同监督课堂状态\n3. 鼓励积极互动"
-    })
 
 @app.route('/get_video_url', methods=['GET'])
 def get_video_url():
@@ -989,6 +1027,317 @@ def api_course_schedule():
         return jsonify({"list": rows})
     except:
         return jsonify({"list": []})
+
+@app.route("/api/face/mapping", methods=["GET"])
+def get_face_mapping():
+    class_id = request.args.get("class_id")
+    if not class_id:
+        return jsonify({"map": {}})
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT face_id, student_id, student_name
+            FROM face_student_mapping
+            WHERE class_id=%s
+        """, (class_id,))
+        rows = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+        # 转成 {face_id: {id:..., name:...}}
+        mapping = {r["face_id"]: {"id": r["student_id"], "name": r["student_name"]} for r in rows}
+        return jsonify({"map": mapping})
+    except:
+        return jsonify({"map": {}})
+
+# 接口1：绑定 face_id → 学生姓名
+@app.route("/api/face/bind", methods=["POST"])
+def api_face_bind():
+    data = request.json
+    face_id = data.get("face_id")
+    student_id = data.get("student_id")  # 👈 学生ID
+    student_name = data.get("student_name")
+    class_id = data.get("class_id", None)
+
+    if not face_id or not student_name:
+        return jsonify({"code": 400, "msg": "参数错误"}), 400
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor()
+        cursor.execute("""
+            INSERT INTO face_student_mapping
+            (face_id, student_id, student_name, class_id)
+            VALUES (%s, %s, %s, %s)
+            ON DUPLICATE KEY UPDATE
+                student_id = %s,
+                student_name = %s,
+                class_id = %s
+        """, (
+            face_id, student_id, student_name, class_id,
+            student_id, student_name, class_id
+        ))
+        db_tmp.commit()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"code": 200, "msg": "绑定成功"})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": str(e)}), 500
+
+# 接口2：获取某个班级所有已绑定的人脸列表
+@app.route("/api/face/list", methods=["GET"])
+def api_face_list():
+    class_id = request.args.get("class_id", None)
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        sql = "SELECT face_id, student_name, class_id FROM face_student_mapping"
+        if class_id:
+            sql += " WHERE class_id=%s"
+            cursor.execute(sql, (class_id,))
+        else:
+            cursor.execute(sql)
+        rows = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"list": rows})
+    except:
+        return jsonify({"list": []})
+
+@app.route("/api/report/save", methods=["POST"])
+def save_report():
+    d = request.json
+    db_tmp = pymysql.connect(**DB_CONFIG)
+    cursor = db_tmp.cursor()
+    cursor.execute("""
+        INSERT INTO student_reports
+        (student_code, class_id, lesson_time, normal_posture, raised_hand, looking_down, focus_rate, ai_comment, teacher_score, teacher_comment)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+    """, (
+        d["student_code"],  # 👈 改这里
+        d["class_id"], d["lesson_time"],
+        d["normal_posture"], d["raised_hand"], d["looking_down"], d["focus_rate"],
+        d["ai_comment"], d["teacher_score"], d["teacher_comment"]
+    ))
+    db_tmp.commit()
+    cursor.close()
+    db_tmp.close()
+    return jsonify({"msg": "保存成功"})
+
+@app.route("/api/report/history", methods=["GET"])
+def report_history():
+    student_code = request.args.get("student_code")
+    class_id = request.args.get("class_id")
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT * FROM student_reports
+            WHERE student_code=%s AND class_id=%s
+            ORDER BY lesson_time DESC
+        """, (student_code, class_id))
+        lst = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"list": lst})
+    except Exception as e:
+        return jsonify({"list": []})
+
+@app.route("/api/student/my-reports", methods=["GET"])
+def my_reports():
+    student_code = request.args.get("student_code")
+    if not student_code:
+        return jsonify({"list": []})
+    
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT * FROM student_reports
+            WHERE student_code=%s
+            ORDER BY lesson_time DESC
+        """, (student_code,))
+        lst = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"list": lst})
+    except Exception as e:
+        return jsonify({"list": []})
+
+# ========================
+# ✅ 获取【单个学生】课堂行为报告（你未来万能接口）
+# ========================
+@app.route("/api/student/behavior", methods=["GET"])
+def get_student_behavior():
+    class_id = request.args.get("class_id")
+    face_id = request.args.get("face_id")
+
+    if not class_id or not face_id:
+        return jsonify({"error": "缺少参数"}), 400
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+
+        # 查这个班级的所有课堂报告
+        cursor.execute("""
+            SELECT minio_json_path FROM course_reports
+            WHERE class_id=%s ORDER BY created_at DESC
+        """, (class_id,))
+        reports = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+
+        # 汇总该学生所有行为
+        total_behaviors = {}
+        for r in reports:
+            try:
+                data = minio_client.get_object(BUCKET_NAME, r["minio_json_path"])
+                stats = json.load(data)
+                sb = stats.get("student_behaviors", {})
+                if face_id in sb:
+                    for b, cnt in sb[face_id].items():
+                        total_behaviors[b] = total_behaviors.get(b, 0) + cnt
+            except:
+                continue
+
+        return jsonify({
+            "face_id": face_id,
+            "behaviors": total_behaviors
+        })
+
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+# ========================
+# 获取所有班级列表（补全缺失接口）
+# ========================
+@app.route("/api/class/list", methods=["GET"])
+def get_class_list():
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("SELECT id, class_name FROM classes")
+        class_list = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"list": class_list})
+    except Exception as e:
+        return jsonify({"list": []}), 500
+
+# 获取班级学生列表（绑定用）
+@app.route("/api/class/students", methods=["GET"])
+def get_class_students():
+    class_id = request.args.get("class_id")
+    if not class_id:
+        return jsonify({"students": []})
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT s.id, s.student_code, u.name
+            FROM students s
+            JOIN users u ON s.user_id = u.id
+            WHERE s.class_id = %s
+        """, (class_id,))
+        students = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"students": students})
+    except:
+        return jsonify({"students": []})
+
+# 接口3：批量导入绑定（CSV文件）
+@app.route("/api/face/batch_import", methods=["POST"])
+def api_face_batch_import():
+    if 'file' not in request.files:
+        return jsonify({"code": 400, "msg": "请上传文件"}), 400
+
+    file = request.files['file']
+    class_id = request.form.get("class_id", None)
+    try:
+        import csv
+        reader = csv.DictReader(file.read().decode("utf-8").splitlines())
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor()
+        for row in reader:
+            face_id = row.get("face_id")
+            student_name = row.get("student_name")
+            if face_id and student_name:
+                cursor.execute("""
+                    INSERT INTO face_student_mapping (face_id, student_name, class_id)
+                    VALUES (%s,%s,%s) ON DUPLICATE KEY UPDATE student_name=%s
+                """, (face_id, student_name, class_id, student_name))
+        db_tmp.commit()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"code": 200, "msg": "批量导入成功"})
+    except Exception as e:
+        return jsonify({"code": 500, "msg": str(e)}), 500
+
+# 接口4：解除绑定
+@app.route("/api/face/unbind", methods=["POST"])
+def api_face_unbind():
+    face_id = request.json.get("face_id")
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor()
+        cursor.execute("DELETE FROM face_student_mapping WHERE face_id=%s", (face_id,))
+        db_tmp.commit()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"code": 200, "msg": "解除成功"})
+    except:
+        return jsonify({"code": 500, "msg": "失败"}), 500
+
+@app.route("/api/ai/analyze", methods=["POST"])
+def ai_analyze():
+    data = request.json
+    student_id = data.get("student_id")
+    normal = data.get("normal_posture")
+    raised = data.get("raised_hand")
+    down = data.get("looking_down")
+    focus = data.get("focus_rate")
+
+    prompt = f"""
+你是小学/中学课堂行为分析师，请用温和、鼓励、专业的语气写一段评语。
+行为数据：
+正常坐姿：{normal}
+举手次数：{raised}
+低头次数：{down}
+专注度：{focus}%
+
+要求：80字左右，适合家长阅读。
+"""
+
+    # 后端调用 Qwen
+    client = OpenAI(
+        api_key="sk-06abd7a7eb514b3ebd611412f0dc3531",
+        base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
+    )
+    completion = client.chat.completions.create(
+        model="qwen-turbo",
+        messages=[{"role": "user", "content": prompt}]
+    )
+    res = completion.choices[0].message.content
+    return jsonify({"comment": res})
+
+@app.route("/api/report/list", methods=["GET"])
+def report_list():
+    student_id = request.args.get("student_id")
+    class_id = request.args.get("class_id")
+    db_tmp = pymysql.connect(**DB_CONFIG)
+    cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+    cursor.execute("""
+        SELECT * FROM student_reports
+        WHERE student_id=%s AND class_id=%s
+        ORDER BY lesson_time DESC
+    """, (student_id, class_id))
+    rows = cursor.fetchall()
+    cursor.close()
+    db_tmp.close()
+    return jsonify({"list": rows})
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)

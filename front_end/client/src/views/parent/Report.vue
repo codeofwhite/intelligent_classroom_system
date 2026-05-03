@@ -5,15 +5,16 @@
       <p>课堂实时行为统计 & 学习状态分析</p>
     </div>
 
-    <!-- 学生选择（预留） -->
+    <!-- 自动加载孩子列表 -->
     <div class="student-selector">
       <button 
-        v-for="student in studentList" 
-        :key="student.id" 
+        v-for="s in studentList" 
+        :key="s.student_id" 
         class="student-btn"
-        @click="loadStudentReport(student.id)"
+        :class="{ active: selectedStudentId === s.student_id }"
+        @click="loadStudentReport(s.student_id)"
       >
-        {{ student.name }}
+        {{ s.student_name }}
       </button>
     </div>
 
@@ -35,34 +36,53 @@
     </div>
 
     <div v-else class="empty-tip">
-      请选择学生查看报告
+      请选择孩子查看报告
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
-// =========================================
-// 学生列表（预留：后面你绑定 student_id + 姓名）
-// =========================================
-const studentList = ref([
-  { id: 1, name: "张三" },
-  { id: 2, name: "李四" },
-  { id: 3, name: "王五" }
-])
+// 当前登录家长信息
+let parentUser = null
+try {
+  parentUser = JSON.parse(localStorage.getItem('currentUser'))
+} catch (e) {}
 
-// 报告数据
+// 孩子列表（自动加载）
+const studentList = ref([])
+const selectedStudentId = ref(null)
 const report = ref(null)
 
 // =========================================
-// ✅ 预留接口：加载【学生课堂报告】
-// 后端接口：/api/student/report/:student_id
+// 1. 进入页面自动加载【我的孩子】
+// =========================================
+onMounted(async () => {
+  if (!parentUser || parentUser.role !== 'parent') {
+    alert('请以家长身份登录')
+    return
+  }
+
+  try {
+    const res = await axios.post('http://localhost:5001/parent-children', {
+      user_id: parentUser.id
+    })
+    studentList.value = res.data.children
+  } catch (err) {
+    console.error(err)
+    alert('获取孩子信息失败')
+  }
+})
+
+// =========================================
+// 2. 加载孩子课堂报告
 // =========================================
 async function loadStudentReport(student_id) {
+  selectedStudentId.value = student_id
   try {
-    const res = await axios.get(`http://localhost:5002/api/student/report/${student_id}`)
+    const res = await axios.get(`http://localhost:5002/api/student/my-reports/${student_id}`)
     report.value = res.data
   } catch (e) {
     alert("获取报告失败")
@@ -93,6 +113,10 @@ async function loadStudentReport(student_id) {
   background: #fff;
   border-radius: 8px;
   cursor: pointer;
+}
+.student-btn.active {
+  background: #42b983;
+  color: white;
 }
 .report-card {
   background: #fff;

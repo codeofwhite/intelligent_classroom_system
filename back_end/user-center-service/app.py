@@ -1,4 +1,3 @@
-# user-center-service/app.py
 from flask import Flask, request, jsonify
 import pymysql
 import os
@@ -9,19 +8,21 @@ CORS(app)
 
 def get_db_conn():
     return pymysql.connect(
-            host=os.getenv('DB_HOST', 'user-db'),
-            user=os.getenv('DB_USER', 'root'),          # 默认用 root
-            password=os.getenv('DB_PASSWORD', 'password123'), # 默认密码
-            database=os.getenv('DB_NAME', 'user_center_db'),
-            port=int(os.getenv('DB_PORT', '3306')),
-            cursorclass=pymysql.cursors.DictCursor
+        host=os.getenv('DB_HOST', 'user-db'),
+        user=os.getenv('DB_USER', 'root'),
+        password=os.getenv('DB_PASSWORD', 'password123'),
+        database=os.getenv('DB_NAME', 'user_center_db'),
+        port=int(os.getenv('DB_PORT', 3306)),
+        cursorclass=pymysql.cursors.DictCursor
     )
 
-# 健康检查
 @app.route('/')
 def index():
     return "User Center Service Running"
 
+# ==============================
+# 登录接口（全新规范）
+# ==============================
 @app.route('/login', methods=['POST'])
 def login():
     data = request.json
@@ -35,9 +36,8 @@ def login():
     conn = get_db_conn()
     try:
         with conn.cursor() as cursor:
-            # 1. 校验用户
             sql = """
-                SELECT id, username, name, role 
+                SELECT id, user_code, username, name, role 
                 FROM users 
                 WHERE username = %s AND password = %s AND role = %s
             """
@@ -47,78 +47,106 @@ def login():
             if not user:
                 return jsonify({"status": "error", "message": "账号或密码错误"}), 401
 
-            user_id = user["id"]
+            user_code = user["user_code"]
             relations = []
+            student_code = None
+            teacher_code = None
+            parent_code = None
 
-            # =============================================
-            # 2. 根据角色查询【关联数据】
-            # =============================================
+            # 学生
             if role == "student":
-                # 学生 → 查班级
                 sql = """
-                    SELECT c.class_name, c.grade
+                    SELECT s.student_code, c.class_name, c.grade
                     FROM students s
-                    JOIN classes c ON s.class_id = c.id
-                    WHERE s.user_id = %s
+                    JOIN classes c ON s.class_code = c.class_code
+                    WHERE s.user_code = %s
                 """
-                cursor.execute(sql, (user_id,))
-                class_info = cursor.fetchone()
-                relations.append({
-                    "type": "class",
-                    "class_name": class_info["class_name"],
-                    "grade": class_info["grade"]
-                })
-
-            elif role == "parent":
-                # 家长 → 查关联的孩子
-                sql = """
-                    SELECT u.name as username
-                    FROM parents p
-                    JOIN students s ON p.student_id = s.id
-                    JOIN users u ON s.user_id = u.id
-                    WHERE p.user_id = %s
-                """
-                cursor.execute(sql, (user_id,))
-                children = cursor.fetchall()
-                for child in children:
+                cursor.execute(sql, (user_code,))
+                row = cursor.fetchone()
+                if row:
+                    student_code = row["student_code"]
                     relations.append({
-                        "type": "student",
-                        "username": child["username"]
+                        "type": "class",
+                        "class_name": row["class_name"],
+                        "grade": row["grade"]
                     })
 
-            elif role == "teacher":
-                # 老师 → 查授课班级
+            # 家长
+            elif role == "parent":
                 sql = """
-                    SELECT c.class_name, c.grade
-                    FROM teachers t
-                    JOIN classes c ON t.class_id = c.id
-                    WHERE t.user_id = %s
+                    SELECT parent_code FROM parents WHERE user_code = %s
                 """
-                cursor.execute(sql, (user_id,))
-                class_info = cursor.fetchone()
-                relations.append({
-                    "type": "class",
-                    "class_name": class_info["class_name"],
-                    "grade": class_info["grade"]
-                })
+                cursor.execute(sql, (user_code,))
+                row = cursor.fetchone()
+                if row:
+                    parent_code = row["parent_code"]
 
-            # =============================================
-            # 3. 返回给前端：用户信息 + 关联关系
-            # =============================================
+            # 老师
+            elif role == "teacher":
+                sql = """
+                    SELECT t.teacher_code, c.class_name, c.grade
+                    FROM teachers t
+                    JOIN classes c ON t.class_code = c.class_code
+                    WHERE t.user_code = %s
+                """
+                cursor.execute(sql, (user_code,))
+                row = cursor.fetchone()
+                if row:
+                    teacher_code = row["teacher_code"]
+                    relations.append({
+                        "type": "class",
+                        "class_name": row["class_name"],
+                        "grade": row["grade"]
+                    })
+
             return jsonify({
                 "status": "success",
                 "user": {
                     "id": user["id"],
+                    "user_code": user["user_code"],
                     "username": user["username"],
                     "name": user["name"],
-                    "role": user["role"]
+                    "role": user["role"],
+                    "student_code": student_code,
+                    "parent_code": parent_code,
+                    "teacher_code": teacher_code
                 },
-                "relations": relations  # 前端要用的关联数据
+                "relations": relations
             })
 
     finally:
         conn.close()
-        
+
+# ==============================
+# 家长 → 获取孩子列表
+# ==============================
+@app.route('/parent-children', methods=['POST'])
+def parent_children():
+    data = request.json
+    user_id = data.get('user_id')
+
+    conn = get_db_conn()
+    try:
+        with conn.cursor() as cursor:
+            sql = """
+                SELECT u.user_code, s.student_code, u.name AS student_name
+                FROM parents p
+                JOIN students s ON p.student_code = s.student_code
+                JOIN users u ON s.user_code = u.user_code
+                WHERE p.user_code = %s
+            """
+            cursor.execute(sql, (user_id,))
+            children = cursor.fetchall()
+
+            return jsonify({
+                "children": children
+            })
+    finally:
+        conn.close()
+
+# ==============================
+# 老师 → 获取班级 & 学生
+# ==============================
 @app.route('/teacher-class', methods=['POST'])
 def teacher_class():
     data = request.json
@@ -127,28 +155,26 @@ def teacher_class():
     conn = get_db_conn()
     try:
         with conn.cursor() as cursor:
-            # 1. 获取老师的班级、科目
             sql = """
-                SELECT t.subject, c.class_name, c.id as class_id
+                SELECT t.subject, c.class_name, c.class_code
                 FROM teachers t
-                JOIN classes c ON t.class_id = c.id
-                WHERE t.user_id = %s
+                JOIN classes c ON t.class_code = c.class_code
+                WHERE t.user_code = %s
             """
             cursor.execute(sql, (user_id,))
             teacher = cursor.fetchone()
 
-            class_id = teacher['class_id']
+            class_code = teacher['class_code']
             subject = teacher['subject']
             class_name = teacher['class_name']
 
-            # 2. 获取本班学生
             sql = """
                 SELECT u.name, s.gender
                 FROM students s
-                JOIN users u ON s.user_id = u.id
-                WHERE s.class_id = %s
+                JOIN users u ON s.user_code = u.user_code
+                WHERE s.class_code = %s
             """
-            cursor.execute(sql, (class_id,))
+            cursor.execute(sql, (class_code,))
             students = cursor.fetchall()
 
             return jsonify({
@@ -159,8 +185,11 @@ def teacher_class():
             })
 
     finally:
-        conn.close()        
+        conn.close()
 
+# ==============================
+# 老师 → 获取学生 & 家长信息
+# ==============================
 @app.route('/teacher-students', methods=['POST'])
 def teacher_students():
     data = request.json
@@ -169,33 +198,31 @@ def teacher_students():
     conn = get_db_conn()
     try:
         with conn.cursor() as cursor:
-            # 1. 获取老师负责的班级
             sql = """
-                SELECT c.class_name, c.id as class_id
+                SELECT c.class_code, c.class_name
                 FROM teachers t
-                JOIN classes c ON t.class_id = c.id
-                WHERE t.user_id = %s
+                JOIN classes c ON t.class_code = c.class_code
+                WHERE t.user_code = %s
             """
             cursor.execute(sql, (user_id,))
             teacher = cursor.fetchone()
-            class_id = teacher['class_id']
+            class_code = teacher['class_code']
             class_name = teacher['class_name']
 
-            # 2. 查询本班学生 + 家长信息（关键关联！）
             sql = """
                 SELECT
-                    s.id as student_id,
+                    s.student_id,
                     u.name as student_name,
                     s.gender,
                     up.name as parent_name,
                     up.phone as parent_phone
                 FROM students s
-                JOIN users u ON s.user_id = u.id
-                LEFT JOIN parents p ON s.id = p.student_id
-                LEFT JOIN users up ON p.user_id = up.id
-                WHERE s.class_id = %s
+                JOIN users u ON s.user_code = u.user_code
+                LEFT JOIN parents p ON s.student_code = p.student_code
+                LEFT JOIN users up ON p.user_code = up.user_code
+                WHERE s.class_code = %s
             """
-            cursor.execute(sql, (class_id,))
+            cursor.execute(sql, (class_code,))
             students = cursor.fetchall()
 
             return jsonify({
@@ -204,6 +231,6 @@ def teacher_students():
             })
     finally:
         conn.close()
-       
+
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5001, debug=False, threaded=True)

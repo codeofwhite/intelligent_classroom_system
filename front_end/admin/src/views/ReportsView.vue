@@ -1,105 +1,241 @@
 <template>
   <div class="report-page">
-    <h2>📝 学生行为报告管理</h2>
+    <h2>📝 学生课堂行为报告</h2>
 
-    <!-- 班级信息 -->
+    <!-- 班级 + 时间 -->
     <div class="class-info">
-      班级：<b>{{ className }}</b>
-      学生总数：<b>{{ studentList.length }}</b>
+      班级：
+      <select v-model="classId" @change="loadStudents" style="padding: 6px 12px; border-radius: 6px;">
+        <option value="">-- 选择班级 --</option>
+        <option v-for="c in classList" :key="c.id" :value="c.id">
+          {{ c.class_name }}
+        </option>
+      </select>
+
+      &nbsp;&nbsp;
+      课堂时间：
+      <input v-model="lessonTime" type="datetime-local" style="padding: 6px 12px; border-radius: 6px;">
     </div>
 
-    <!-- 学生列表（选择学生查看报告） -->
-    <div class="student-list">
+    <!-- 学生列表 -->
+    <div class="student-list" v-if="classId">
       <h4>选择学生</h4>
       <div class="grid">
-        <button v-for="s in studentList" :key="s.student_id" class="student-btn"
-          :class="{ active: selectedStudent?.student_id === s.student_id }" @click="selectStudent(s)">
-          {{ s.student_name }}（{{ s.gender }}）
+        <button v-for="s in studentList" :key="s.id" class="student-btn"
+          :class="{ active: selectedStudent?.id === s.id }" @click="selectStudent(s)">
+          {{ s.name }}
         </button>
       </div>
     </div>
 
-    <!-- 报告区域（选中学生才显示） -->
-    <div class="report-card" v-if="selectedStudent">
-      <h3>🎓 行为分析报告</h3>
-
-      <div class="info">
-        <div>学生：{{ selectedStudent.student_name }}</div>
-        <div>班级：{{ className }}</div>
-        <div>日期：{{ today }}</div>
-      </div>
+    <!-- 报告面板 -->
+    <div class="report-card" v-if="selectedStudent && reportData">
+      <h3>🎓 个人行为分析</h3>
 
       <div class="behavior">
-        <div><label>抬头率：</label><span>—</span></div>
-        <div><label>专注度：</label><span>—</span></div>
-        <div><label>举手次数：</label><span>—</span></div>
-        <div><label>异常行为：</label><span>—</span></div>
+        <div><label>正常坐姿：</label><span>{{ reportData.normal || 0 }}</span></div>
+        <div><label>举手次数：</label><span>{{ reportData.raised_hand || 0 }}</span></div>
+        <div><label>低头次数：</label><span>{{ reportData.looking_down || 0 }}</span></div>
+        <div><label>专注度：</label><span>{{ focusRate }}%</span></div>
       </div>
 
       <div class="edit-section">
-        <label>老师评分</label>
-        <input v-model="score" type="number" placeholder="1-100" />
+        <label>AI 自动评语</label>
+        <textarea v-model="aiComment" placeholder="AI 分析结果"></textarea>
+
+        <label>老师评分（1-100）</label>
+        <input v-model="score" type="number" />
 
         <label>老师评语</label>
-        <textarea v-model="comment" placeholder="输入课堂表现评语"></textarea>
+        <textarea v-model="teacherComment" placeholder="输入老师评语"></textarea>
 
         <div class="btns">
-          <button class="btn save">保存报告</button>
-          <button class="btn push">推送给家长</button>
-          <button class="btn ai">AI 自动分析</button>
+          <button class="btn ai" @click="runAI">AI 自动分析</button>
+          <button class="btn save" @click="saveReport">保存报告</button>
         </div>
       </div>
     </div>
-
+    <!-- 新增：该学生历史报告列表 -->
+    <div class="history-card" v-if="selectedStudent && historyList.length > 0">
+      <h3>📜 该学生历史课堂报告</h3>
+      <div class="history-item" v-for="item in historyList" :key="item.id" @click="fillReport(item)">
+        <div class="time">📅 {{ item.lesson_time }}</div>
+        <div class="line">专注度：{{ item.focus_rate }}分｜老师评分：{{ item.teacher_score || '未评分' }}</div>
+        <div class="comment">AI评语：{{ item.ai_comment ? item.ai_comment.slice(0, 30) + '...' : '无' }}</div>
+      </div>
+    </div>
     <div class="empty" v-else>
-      请选择左侧学生查看/编写行为报告
+      请选择班级 → 选择学生
     </div>
   </div>
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
-const className = ref('')
+// 班级
+const classList = ref([])
+const classId = ref('')
+const lessonTime = ref('')
+
+// 学生
 const studentList = ref([])
 const selectedStudent = ref(null)
+
+// 行为数据
+const reportData = ref(null)
+const aiComment = ref('')
 const score = ref('')
-const comment = ref('')
-const today = ref('')
+const teacherComment = ref('')
 
-// 日期
-const getDate = () => {
-  const d = new Date()
-  return `${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`
-}
+const historyList = ref([])
 
-// 加载学生
-const loadStudents = async () => {
-  const user = JSON.parse(localStorage.getItem('userInfo'))
-  if (!user) return
+// 专注度
+const focusRate = computed(() => {
+  const n = reportData.value?.normal || 0
+  const r = reportData.value?.raised_hand || 0
+  const d = reportData.value?.looking_down || 0
+  const total = n + r + d
+  if (total === 0) return 100
+  return Math.round(((n + r) / total) * 100)
+})
 
+// 加载班级
+const loadClasses = async () => {
   try {
-    const { data } = await axios.post('http://localhost:5001/teacher-students', {
-      user_id: user.id
-    })
-    className.value = data.class_name
-    studentList.value = data.students
+    const res = await axios.get('http://localhost:5002/api/class/list')
+    classList.value = res.data.list || []
   } catch (err) {
     console.error(err)
   }
 }
 
-// 选择学生
-const selectStudent = (s) => {
-  selectedStudent.value = s
+// 加载学生
+const loadStudents = async () => {
+  if (!classId.value) return
+  try {
+    const res = await axios.get('http://localhost:5002/api/class/students', {
+      params: { class_id: classId.value }
+    })
+    studentList.value = res.data.students || []
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// 选择学生 → 加载行为 + 加载历史报告
+const selectStudent = async (stu) => {
+  selectedStudent.value = stu
+  aiComment.value = ''
   score.value = ''
-  comment.value = ''
+  teacherComment.value = ''
+  historyList.value = []  // 清空历史
+
+  try {
+    const faceRes = await axios.get('http://localhost:5002/api/face/by_student', {
+      params: { student_id: stu.id }
+    })
+    const faceId = faceRes.data.face_id
+
+    if (!faceId) {
+      alert('未绑定人脸')
+      reportData.value = null
+      return
+    }
+
+    const reportRes = await axios.get('http://localhost:5002/api/student/behavior', {
+      params: { class_id: classId.value, face_id: faceId }
+    })
+
+    const b = reportRes.data.behaviors || {}
+    reportData.value = {
+      normal: b['正常坐姿'] || 0,
+      raised_hand: b['举手'] || 0,
+      looking_down: b['低头'] || 0
+    }
+
+    // 🔥 加载该学生历史报告
+    await loadHistoryReport(stu.student_code)
+
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// 加载历史报告
+const loadHistoryReport = async (studentCode) => {
+  try {
+    const res = await axios.get('http://localhost:5002/api/report/history', {
+      params: {
+        student_code: studentCode,
+        class_id: classId.value
+      }
+    })
+    historyList.value = res.data.list || []
+  } catch (err) {
+    console.error(err)
+  }
+}
+
+// 点击历史记录，回填到编辑框
+const fillReport = (item) => {
+  lessonTime.value = item.lesson_time.slice(0,16)
+  aiComment.value = item.ai_comment || ''
+  score.value = item.teacher_score || ''
+  teacherComment.value = item.teacher_comment || ''
+}
+
+// ======================
+// AI 分析（后端调用）
+// ======================
+const runAI = async () => {
+  if (!reportData.value) return
+  try {
+    const res = await axios.post('http://localhost:5002/api/ai/analyze', {
+      student_code: selectedStudent.value.student_code,
+      normal_posture: reportData.value.normal,
+      raised_hand: reportData.value.raised_hand,
+      looking_down: reportData.value.looking_down,
+      focus_rate: focusRate.value
+    })
+    aiComment.value = res.data.comment
+  } catch (err) {
+    alert('AI 分析失败')
+  }
+}
+
+// ======================
+// 保存报告（MySQL）
+// ======================
+const saveReport = async () => {
+  if (!lessonTime.value) {
+    alert('请选择课堂时间！')
+    return
+  }
+
+  try {
+    await axios.post('http://localhost:5002/api/report/save', {
+      student_code: selectedStudent.value.student_code, // ✅ 正确
+      class_id: classId.value,
+      lesson_time: lessonTime.value,
+      normal_posture: reportData.value.normal,
+      raised_hand: reportData.value.raised_hand,
+      looking_down: reportData.value.looking_down,
+      focus_rate: focusRate.value,
+      ai_comment: aiComment.value,
+      teacher_score: score.value,
+      teacher_comment: teacherComment.value
+    })
+    alert('✅ 报告保存成功！')
+  } catch (err) {
+    console.error(err)
+    alert('保存失败')
+  }
 }
 
 onMounted(() => {
-  today.value = getDate()
-  loadStudents()
+  loadClasses()
 })
 </script>
 
@@ -145,13 +281,6 @@ onMounted(() => {
   padding: 24px;
   border-radius: 12px;
   box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
-}
-
-.info {
-  display: flex;
-  gap: 16px;
-  margin-bottom: 20px;
-  color: #666;
 }
 
 .behavior {
@@ -200,19 +329,44 @@ onMounted(() => {
   cursor: pointer;
 }
 
+.btn.ai {
+  background: #722ed1;
+  color: #fff;
+}
+
 .btn.save {
   background: #1890ff;
   color: #fff;
 }
 
-.btn.push {
-  background: #52c41a;
-  color: #fff;
+.history-card {
+  background: #fff;
+  padding: 20px;
+  border-radius: 12px;
+  margin-top: 20px;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.05);
 }
-
-.btn.ai {
-  background: #722ed1;
-  color: #fff;
+.history-item {
+  border: 1px solid #eee;
+  border-radius: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  cursor: pointer;
+}
+.history-item:hover {
+  background: #f8f9fa;
+}
+.time {
+  color: #666;
+  font-size: 14px;
+  margin-bottom: 4px;
+}
+.line {
+  margin: 4px 0;
+}
+.comment {
+  color: #888;
+  font-size: 14px;
 }
 
 .empty {

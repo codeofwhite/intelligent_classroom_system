@@ -80,8 +80,15 @@ const handleLogin = async () => {
     const result = await response.json()
 
     if (result.status === 'success') {
+      // ✅ 存你原来的
       localStorage.setItem('currentUser', JSON.stringify(result.user))
       localStorage.setItem('currentRelations', JSON.stringify(result.relations || []))
+      
+      // ✅ 额外存学生专用
+      if (result.user.role === 'student') {
+        localStorage.setItem('studentInfo', JSON.stringify(result.user))
+      }
+
       emit('login-success', result.user)
       router.push('/')
     } else {

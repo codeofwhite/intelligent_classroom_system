@@ -12,15 +12,15 @@
       <div class="items">
         <div>
           <span>上课节数</span>
-          <strong>5 节</strong>
+          <strong>{{ reportList.length }} 节</strong>
         </div>
         <div>
           <span>平均专注度</span>
-          <strong class="blue">88%</strong>
+          <strong class="blue">{{ avgFocus }}%</strong>
         </div>
         <div>
           <span>总体评价</span>
-          <strong class="green">良好</strong>
+          <strong class="green">{{ level }}</strong>
         </div>
       </div>
     </div>
@@ -36,11 +36,11 @@
         @click="openDetail(item)"
       >
         <div class="left">
-          <div class="subject">{{ item.subject }}</div>
-          <div class="date">{{ item.date }} · {{ item.lesson }}</div>
+          <div class="subject">课堂报告</div>
+          <div class="date">{{ item.lesson_time }} </div>
         </div>
         <div class="right">
-          <div class="score">{{ item.focus }}%</div>
+          <div class="score">{{ item.focus_rate }}%</div>
           <div class="arrow">></div>
         </div>
       </div>
@@ -56,43 +56,39 @@
 
         <div class="detail-body">
           <div class="info-row">
-            <span>课程</span>
-            <span>{{ currentDetail.subject }}</span>
-          </div>
-          <div class="info-row">
-            <span>时间</span>
-            <span>{{ currentDetail.date }} {{ currentDetail.lesson }}</span>
+            <span>课程时间</span>
+            <span>{{ currentDetail.lesson_time }}</span>
           </div>
           <div class="info-row">
             <span>专注度</span>
-            <span class="blue">{{ currentDetail.focus }}%</span>
+            <span class="blue">{{ currentDetail.focus_rate }}%</span>
           </div>
 
           <div class="stats">
             <div>
-              <label>抬头次数</label>
-              <span>{{ currentDetail.lookUp }}</span>
+              <label>正常坐姿</label>
+              <span>{{ currentDetail.normal_posture }}</span>
             </div>
             <div>
               <label>举手次数</label>
-              <span>{{ currentDetail.handUp }}</span>
+              <span>{{ currentDetail.raised_hand }}</span>
             </div>
             <div>
-              <label>走神次数</label>
-              <span class="red">{{ currentDetail.disturb }}</span>
+              <label>低头次数</label>
+              <span class="red">{{ currentDetail.looking_down }}</span>
             </div>
           </div>
 
           <!-- AI 建议 -->
-          <div class="suggest">
+          <div class="suggest" v-if="currentDetail.ai_comment">
             <h4>💡 AI 学习建议</h4>
-            <p>{{ currentDetail.suggest }}</p>
+            <p>{{ currentDetail.ai_comment }}</p>
           </div>
 
           <!-- 老师评语 -->
-          <div class="comment" v-if="currentDetail.comment">
+          <div class="comment" v-if="currentDetail.teacher_comment">
             <h4>👨‍🏫 老师评语</h4>
-            <p>{{ currentDetail.comment }}</p>
+            <p>{{ currentDetail.teacher_comment }}</p>
           </div>
         </div>
       </div>
@@ -101,57 +97,70 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, computed, onMounted } from 'vue'
+import axios from 'axios'
 
-// 课程报告列表
-const reportList = ref([
-  {
-    id: 1,
-    subject: '数学',
-    date: '2026-04-18',
-    lesson: '第3节',
-    focus: 92,
-    lookUp: 18,
-    handUp: 2,
-    disturb: 1,
-    suggest: '本节课整体专注度很高，偶尔一次走神，下次可以尽量保持坐姿哦！',
-    comment: '课堂表现很棒，继续保持！'
-  },
-  {
-    id: 2,
-    subject: '语文',
-    date: '2026-04-17',
-    lesson: '第5节',
-    focus: 85,
-    lookUp: 14,
-    handUp: 1,
-    disturb: 3,
-    suggest: '后半节课注意力有些下降，可以尝试跟着老师思路小声跟读。',
-    comment: '积极思考，回答问题声音再大一点就更好了。'
-  },
-  {
-    id: 3,
-    subject: '英语',
-    date: '2026-04-16',
-    lesson: '第2节',
-    focus: 90,
-    lookUp: 16,
-    handUp: 3,
-    disturb: 0,
-    suggest: '全程非常专注，积极互动，是非常棒的课堂状态！',
-    comment: '表现优秀，值得表扬！'
-  }
-])
-
+const reportList = ref([])
 const currentDetail = ref(null)
 
+// 读取用户信息
+let user = null
+try {
+  user = JSON.parse(localStorage.getItem('currentUser'))
+} catch (e) {}
+
+// ✅ 正确字段：student_code
+const student_code = user?.student_code
+
+console.log("用户信息：", user)
+console.log("学生CODE：", student_code)
+
+// 平均专注度
+const avgFocus = computed(() => {
+  if (reportList.value.length === 0) return 0
+  const sum = reportList.value.reduce((t, i) => t + (i.focus_rate || 0), 0)
+  return Math.round(sum / reportList.value.length)
+})
+
+// 总体评价
+const level = computed(() => {
+  const avg = avgFocus.value
+  if (avg >= 90) return '优秀'
+  if (avg >= 80) return '良好'
+  if (avg >= 70) return '一般'
+  return '需努力'
+})
+
+// 加载我的报告
+const loadMyReports = async () => {
+  if (!student_code) {
+    alert('未获取到学生信息：' + JSON.stringify(user))
+    return
+  }
+
+  try {
+    const res = await axios.get('http://localhost:5002/api/student/my-reports', {
+      params: { student_code }
+    })
+    reportList.value = res.data.list || []
+  } catch (err) {
+    console.error('加载报告失败', err)
+  }
+}
+
+// 打开详情
 const openDetail = (item) => {
   currentDetail.value = item
 }
 
+// 关闭弹窗
 const closeDetail = () => {
   currentDetail.value = null
 }
+
+onMounted(() => {
+  loadMyReports()
+})
 </script>
 
 <style scoped>
@@ -176,7 +185,6 @@ const closeDetail = () => {
   margin: 0;
 }
 
-/* 本周概况 */
 .week-card {
   background: #fff;
   border-radius: 14px;
@@ -208,7 +216,6 @@ const closeDetail = () => {
 .blue { color: #429dff; }
 .green { color: #20c997; }
 
-/* 报告列表 */
 .list-section h3 {
   font-size: 16px;
   margin: 0 0 10px 4px;
@@ -246,7 +253,6 @@ const closeDetail = () => {
   font-size: 16px;
 }
 
-/* 弹窗 */
 .modal {
   position: fixed;
   top: 0;
