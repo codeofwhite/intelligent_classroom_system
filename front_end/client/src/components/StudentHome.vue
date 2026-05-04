@@ -58,11 +58,13 @@
       智慧课堂 © 2025 毕业设计专用
     </div>
   </div>
+  <StudentAiFloat></StudentAiFloat>
 </template>
 
 <script setup>
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
+import StudentAiFloat from '../components/StudentAiFloat.vue'
 
 const studentName = ref('加载中...')
 const className = ref('')

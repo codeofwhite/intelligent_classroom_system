@@ -109,7 +109,7 @@ const onLoginSuccess = async (userInfo) => {
       const names = children.map(c => c.student_name).join('、')
       relationText.value = '孩子：' + names
     }
-  } catch (e) {}
+  } catch (e) { }
 
   setTimeout(() => router.push('/'), 10)
 }

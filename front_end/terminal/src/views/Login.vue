@@ -69,15 +69,18 @@ const login = async () => {
   background: #000;
   color: #0f0;
 }
+
 .login-box {
   border: 1px solid #0f0;
   padding: 30px;
   width: 380px;
   background: #111;
 }
+
 .item {
   margin: 16px 0;
 }
+
 input {
   width: 100%;
   padding: 8px;
@@ -86,6 +89,7 @@ input {
   border: 1px solid #0f0;
   margin-top: 6px;
 }
+
 .login-btn {
   width: 100%;
   padding: 10px;
@@ -95,6 +99,7 @@ input {
   cursor: pointer;
   font-weight: bold;
 }
+
 .tip {
   margin-top: 10px;
   color: #ff4444;

@@ -65,6 +65,7 @@ onMounted(() => {
 .guide {
   margin-top: 30px;
 }
+
 .guide span {
   color: #fff;
   font-weight: bold;

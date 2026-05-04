@@ -94,11 +94,13 @@
       </div>
     </div>
   </div>
+  <StudentAiFloat></StudentAiFloat>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
+import StudentAiFloat from '../../components/StudentAiFloat.vue'
 
 const reportList = ref([])
 const currentDetail = ref(null)

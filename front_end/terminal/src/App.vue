@@ -38,12 +38,14 @@ const logout = () => {
   padding: 0;
   box-sizing: border-box;
 }
+
 #app {
   min-height: 100vh;
   background: #000;
   color: #0f0;
   font-family: "Courier New", monospace;
 }
+
 nav {
   padding: 1rem;
   background: #111;
@@ -51,14 +53,17 @@ nav {
   gap: 20px;
   border-bottom: 1px solid #0f0;
 }
+
 nav a {
   color: #0f0;
   text-decoration: none;
   font-size: 18px;
 }
+
 nav a:hover {
   color: #fff;
 }
+
 .logout-btn {
   margin-left: auto;
   background: #222;

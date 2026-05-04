@@ -6,13 +6,8 @@
         <button class="new-chat-btn" @click="newChat">➕ 新对话</button>
       </div>
       <div class="session-list">
-        <div
-          v-for="s in sessionList"
-          :key="s.session_id"
-          class="session-item"
-          :class="{ active: s.session_id === currentSessionId }"
-          @click="switchSession(s.session_id)"
-        >
+        <div v-for="s in sessionList" :key="s.session_id" class="session-item"
+          :class="{ active: s.session_id === currentSessionId }" @click="switchSession(s.session_id)">
           <div class="title">{{ s.title }}</div>
           <div class="time">{{ formatTime(s.update_time) }}</div>
           <div class="del-btn" @click.stop="deleteSession(s)">×</div>
@@ -27,7 +22,7 @@
           <div v-if="isImageMsg(msg.content)" class="image-wrapper">
             <img :src="getImageUrl(msg.content)" alt="课堂关键帧" />
           </div>
-          
+
           <!-- ✅ 这里改成渲染 Markdown -->
           <div v-else class="bubble" v-html="renderMarkdown(msg.content)"></div>
         </div>
@@ -35,11 +30,7 @@
       </div>
 
       <div class="chat-input-bar">
-        <input
-          v-model="inputText"
-          @keyup.enter="sendMessage"
-          placeholder="请输入问题，例如：我的历史课堂怎么样？"
-        />
+        <input v-model="inputText" @keyup.enter="sendMessage" placeholder="请输入问题，例如：我的历史课堂怎么样？" />
         <button @click="sendMessage" :disabled="loading">发送</button>
       </div>
     </div>
@@ -309,6 +300,7 @@ function formatTime(timeStr) {
   border-radius: 50%;
   cursor: pointer;
 }
+
 .del-btn:hover {
   background: #fef2f2;
   color: #ef4444;
@@ -355,13 +347,16 @@ function formatTime(timeStr) {
   margin: 6px 0;
   padding-left: 20px;
 }
+
 .bubble :deep(li) {
   margin: 4px 0;
 }
+
 .bubble :deep(strong) {
   color: #2563eb;
   font-weight: 600;
 }
+
 .bubble :deep(h3) {
   margin: 0 0 8px 0;
   font-size: 15px;
@@ -371,10 +366,11 @@ function formatTime(timeStr) {
 .image-wrapper {
   max-width: 300px;
 }
+
 .image-wrapper img {
   width: 100%;
   border-radius: 12px;
-  box-shadow: 0 1px 5px rgba(0,0,0,0.1);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.1);
 }
 
 .ai .bubble {
@@ -446,12 +442,14 @@ function formatTime(timeStr) {
 .section {
   margin-bottom: 14px;
 }
+
 .section label {
   font-size: 12px;
   color: #9ca3af;
   margin-bottom: 4px;
   display: block;
 }
+
 .val {
   background: #313141;
   padding: 8px 10px;
@@ -467,15 +465,18 @@ function formatTime(timeStr) {
   margin-bottom: 8px;
   font-size: 12px;
 }
+
 .tool-item .name {
   color: #38bdf8;
   font-weight: bold;
   margin-bottom: 4px;
 }
+
 .tool-item .args {
   color: #a5b4fc;
   margin-bottom: 4px;
 }
+
 .tool-item .result {
   color: #d1d5db;
   word-break: break-all;
