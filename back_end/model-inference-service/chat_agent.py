@@ -200,6 +200,9 @@ def tool_get_class_keyframe(report_code: str):
     except Exception as e:
         return f"获取关键帧失败：{str(e)}"
     
+# ========================
+# 工具 6：批量获取报告详情
+# ========================
 def tool_get_batch_report_detail(report_codes: list):
     """批量一次性获取多个报告详情"""
     res = []
@@ -208,6 +211,9 @@ def tool_get_batch_report_detail(report_codes: list):
         res.append(detail)
     return str(res)
 
+# ========================
+# 工具 7：获取课程表
+# ========================
 def tool_get_teacher_schedule(teacher_code: str):
     try:
         db = pymysql.connect(**DB_CONFIG)
@@ -237,6 +243,198 @@ def tool_get_teacher_schedule(teacher_code: str):
         return "\n".join(lines)
     except Exception as e:
         return f"获取课表失败：{str(e)}"
+
+# ========================
+# 工具 8：查询班级人脸绑定状态
+# ========================
+def tool_get_face_mapping(class_code: str):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+
+        # 1. 获取班级所有学生
+        cursor.execute("""
+            SELECT s.student_code, u.name
+            FROM students s
+            JOIN users u ON s.user_code = u.user_code
+            WHERE s.class_code = %s
+        """, (class_code,))
+        all_students = cursor.fetchall()
+
+        # 2. 获取已绑定人脸
+        cursor.execute("""
+            SELECT face_id, student_code, student_name
+            FROM face_student_mapping
+            WHERE class_code = %s
+        """, (class_code,))
+        bound_rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        bound_codes = {r["student_code"] for r in bound_rows if r.get("student_code")}
+        bound_lines = []
+        unbound_lines = []
+
+        for s in all_students:
+            if s["student_code"] in bound_codes:
+                face_entry = next((r for r in bound_rows if r.get("student_code") == s["student_code"]), None)
+                face_id = face_entry["face_id"] if face_entry else "未知"
+                bound_lines.append(f"  ✅ {s['name']}（学号:{s['student_code']}）→ 人脸ID: {face_id}")
+            else:
+                unbound_lines.append(f"  ❌ {s['name']}（学号:{s['student_code']}）")
+
+        result_parts = [f"班级 {class_code} 人脸绑定情况（共{len(all_students)}人）："]
+        if bound_lines:
+            result_parts.append(f"\n已绑定（{len(bound_lines)}人）：")
+            result_parts.extend(bound_lines)
+        if unbound_lines:
+            result_parts.append(f"\n未绑定（{len(unbound_lines)}人）：")
+            result_parts.extend(unbound_lines)
+        if not bound_lines and not unbound_lines:
+            result_parts.append("暂无学生数据")
+
+        return "\n".join(result_parts)
+    except Exception as e:
+        return f"查询人脸绑定失败：{str(e)}"
+
+
+# ========================
+# 工具 9：班级专注度排行榜
+# ========================
+def tool_get_class_rank(class_code: str):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT 
+                u.name AS name,
+                s.student_code,
+                IFNULL(AVG(r.focus_rate), 0) AS avg_focus,
+                COUNT(r.id) AS report_count
+            FROM students s
+            JOIN users u ON s.user_code = u.user_code
+            LEFT JOIN student_reports r 
+                ON s.student_code = r.student_code 
+                AND r.class_code = %s
+            WHERE s.class_code = %s
+            GROUP BY s.student_code, u.name
+            HAVING avg_focus > 0
+            ORDER BY avg_focus DESC
+        """, (class_code, class_code))
+        rows = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        if not rows:
+            return f"班级 {class_code} 暂无专注度数据"
+
+        lines = [f"📊 班级 {class_code} 专注度排行榜（共{len(rows)}人）："]
+        for i, r in enumerate(rows, 1):
+            medal = "🥇" if i == 1 else "🥈" if i == 2 else "🥉" if i == 3 else f" {i}."
+            lines.append(
+                f"  {medal} {r['name']}（{r['student_code']}）"
+                f" — 平均专注度 {round(float(r['avg_focus']))}%"
+                f"，共{r['report_count']}节课"
+            )
+        return "\n".join(lines)
+    except Exception as e:
+        return f"查询排行榜失败：{str(e)}"
+
+
+# ========================
+# 工具 10：学生跨课堂行为汇总
+# ========================
+def tool_get_student_behavior(student_code: str, class_code: str):
+    try:
+        import json as _json
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+
+        # 查该学生姓名
+        cursor.execute("""
+            SELECT u.name FROM students s
+            JOIN users u ON s.user_code = u.user_code
+            WHERE s.student_code = %s
+        """, (student_code,))
+        stu = cursor.fetchone()
+        student_name = stu["name"] if stu else student_code
+
+        # 查该班级所有课堂报告
+        cursor.execute("""
+            SELECT minio_json_path FROM course_reports
+            WHERE class_code=%s ORDER BY created_at DESC
+        """, (class_code,))
+        reports = cursor.fetchall()
+        cursor.close()
+        db.close()
+
+        if not reports:
+            return f"学生 {student_name} 暂无课堂记录"
+
+        total_behaviors = {}
+        matched_count = 0
+        for r in reports:
+            try:
+                data = MINIO_CLIENT.get_object(BUCKET_NAME, r["minio_json_path"])
+                stats = _json.loads(data.read())
+                sb = stats.get("student_behaviors", {})
+                if student_code in sb:
+                    matched_count += 1
+                    for b, cnt in sb[student_code].items():
+                        total_behaviors[b] = total_behaviors.get(b, 0) + cnt
+            except:
+                continue
+
+        if not total_behaviors:
+            return f"学生 {student_name}（{student_code}）在 {len(reports)} 节课中未被识别到行为数据（可能未绑定人脸）"
+
+        lines = [f"📋 学生 {student_name}（{student_code}）行为汇总（在 {matched_count}/{len(reports)} 节课中被识别）："]
+        total = sum(total_behaviors.values())
+        for b, cnt in sorted(total_behaviors.items(), key=lambda x: -x[1]):
+            pct = round(100 * cnt / total)
+            lines.append(f"  • {b}：{cnt}次（{pct}%）")
+
+        return "\n".join(lines)
+    except Exception as e:
+        return f"查询学生行为失败：{str(e)}"
+
+
+# ========================
+# 工具 11：获取报告AI分析全文
+# ========================
+def tool_get_report_ai_analysis(report_id: str):
+    try:
+        db = pymysql.connect(**DB_CONFIG)
+        cursor = db.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT cr.id, cr.report_code, cr.minio_json_path, c.class_name, cr.lesson_section
+            FROM course_reports cr
+            JOIN classes c ON cr.class_code = c.class_code
+            WHERE cr.id = %s OR cr.report_code = %s
+        """, (report_id, report_id))
+        report = cursor.fetchone()
+        cursor.close()
+        db.close()
+
+        if not report:
+            return f"报告 {report_id} 不存在"
+
+        # 尝试读取 AI 分析
+        ai_text = ""
+        try:
+            ai_path = report['minio_json_path'].replace("stats.json", "ai_report.md")
+            ai_obj = MINIO_CLIENT.get_object(BUCKET_NAME, ai_path)
+            ai_text = ai_obj.read().decode("utf-8")
+        except:
+            ai_text = ""
+
+        if not ai_text:
+            return f"报告 {report['report_code']}（{report['class_name']} - {report['lesson_section']}）暂无AI分析报告，请先在报告详情页生成。"
+
+        return f"📝 报告 {report['report_code']}（{report['class_name']} - {report['lesson_section']}）AI分析：\n\n{ai_text}"
+    except Exception as e:
+        return f"获取AI分析失败：{str(e)}"
+
 
 # ========================
 # 工具定义
@@ -341,6 +539,63 @@ TOOLS = [
             "type": "object",
             "properties": {},
             "required": []
+        }
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "tool_get_face_mapping",
+        "description": "查询班级的人脸绑定情况，看哪些学生已绑定人脸、哪些未绑定",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "class_code": {"type": "string", "description": "班级编号"}
+            },
+            "required": ["class_code"]
+        }
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "tool_get_class_rank",
+        "description": "查询班级学生专注度排行榜，按平均专注度排序",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "class_code": {"type": "string", "description": "班级编号"}
+            },
+            "required": ["class_code"]
+        }
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "tool_get_student_behavior",
+        "description": "查询某个学生在所有课堂中的跨课堂行为汇总数据，需要学生学号和班级编号",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "student_code": {"type": "string", "description": "学生学号"},
+                "class_code": {"type": "string", "description": "班级编号"}
+            },
+            "required": ["student_code", "class_code"]
+        }
+    }
+},
+{
+    "type": "function",
+    "function": {
+        "name": "tool_get_report_ai_analysis",
+        "description": "获取某节课报告的AI分析全文，支持报告ID或报告编号",
+        "parameters": {
+            "type": "object",
+            "properties": {
+                "report_id": {"type": "string", "description": "报告ID或报告编号（如 R2025001）"}
+            },
+            "required": ["report_id"]
         }
     }
 }
@@ -499,7 +754,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
         log_intent = intent
         
         if intent in ["chat_chitchat", "other"]:
-            answer = "😊 我是课堂分析AI助手，我可以帮你：\n• 查询历史课堂记录\n• 查询专注度/行为统计\n• 查询课堂关键帧画面\n• 多维度分析班级表现" if intent=="chat_chitchat" else "🙏 抱歉，我只负责课堂行为分析相关问题。"
+            answer = "😊 我是课堂分析AI助手，我可以帮你：\n• 查询历史课堂记录与详情\n• 查询专注度/行为统计\n• 查询课堂关键帧画面\n• 多维度分析班级表现\n• 查询专注度排行榜\n• 查询人脸绑定情况\n• 查询单个学生跨课堂表现\n• 查看AI分析报告全文\n• 查询课程表安排" if intent=="chat_chitchat" else "🙏 抱歉，我只负责课堂行为分析相关问题。"
             history.append({"role": "user", "content": question})
             history.append({"role": "assistant", "content": answer})
             save_session_messages(teacher_code, session_id, question[:20] + "...", history)
@@ -604,21 +859,42 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
                 log_tool_list.append(func_name)
                 log_args_list.append(json.dumps(args))
 
+                # ---- 分发工具调用 ----
                 if func_name == "tool_get_teacher_all_reports":
                     tool_result = tool_get_teacher_all_reports(teacher_code)
+                    update_teacher_long_memory(teacher_code, question=question, tool_name=func_name)
                 elif func_name == "tool_get_single_report_detail":
                     tool_result = tool_get_single_report_detail(args.get("report_code"))
-                    update_teacher_long_memory(teacher_code, report_code=args.get("report_code"))
+                    update_teacher_long_memory(teacher_code, report_code=args.get("report_code"), question=question, tool_name=func_name)
                 elif func_name == "tool_get_batch_report_detail":
                     tool_result = tool_get_batch_report_detail(args.get("report_codes"))
+                    update_teacher_long_memory(teacher_code, question=question, tool_name=func_name)
                 elif func_name == "tool_get_class_students":
                     tool_result = tool_get_class_students(args.get("class_code"))
+                    update_teacher_long_memory(teacher_code, class_code=args.get("class_code"), question=question, tool_name=func_name)
                 elif func_name == "tool_get_time_range_stats":
                     tool_result = tool_get_time_range_stats(teacher_code, args.get("time_type", "7d"))
+                    update_teacher_long_memory(teacher_code, question=question, tool_name=func_name)
                 elif func_name == "tool_get_class_keyframe":
                     tool_result = tool_get_class_keyframe(args.get("report_code"))
+                    update_teacher_long_memory(teacher_code, report_code=args.get("report_code"), question=question, tool_name=func_name)
                 elif func_name == "tool_get_teacher_schedule":
                     tool_result = tool_get_teacher_schedule(teacher_code)
+                    update_teacher_long_memory(teacher_code, question=question, tool_name=func_name)
+                elif func_name == "tool_get_face_mapping":
+                    tool_result = tool_get_face_mapping(args.get("class_code"))
+                    update_teacher_long_memory(teacher_code, class_code=args.get("class_code"), question=question, tool_name=func_name)
+                elif func_name == "tool_get_class_rank":
+                    tool_result = tool_get_class_rank(args.get("class_code"))
+                    update_teacher_long_memory(teacher_code, class_code=args.get("class_code"), question=question, tool_name=func_name)
+                elif func_name == "tool_get_student_behavior":
+                    tool_result = tool_get_student_behavior(
+                        args.get("student_code"), args.get("class_code")
+                    )
+                    update_teacher_long_memory(teacher_code, class_code=args.get("class_code"), student_code=args.get("student_code"), question=question, tool_name=func_name)
+                elif func_name == "tool_get_report_ai_analysis":
+                    tool_result = tool_get_report_ai_analysis(args.get("report_id"))
+                    update_teacher_long_memory(teacher_code, report_code=args.get("report_id"), question=question, tool_name=func_name)
                 else:
                     tool_result = "未知工具"
 
@@ -681,66 +957,159 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
         }
 
 def get_teacher_long_memory(teacher_code: str):
+    """读取教师长期记忆（所有字段，缺失字段兜底空值）"""
     try:
         db = pymysql.connect(**DB_CONFIG)
         cursor = db.cursor(pymysql.cursors.DictCursor)
         cursor.execute("""
-            SELECT focus_class_codes, focus_report_codes, prefer_question_type
-            FROM teacher_long_memory WHERE teacher_code = %s
+            SELECT * FROM teacher_long_memory WHERE teacher_code = %s
         """, (teacher_code,))
         row = cursor.fetchone()
         cursor.close()
         db.close()
         if not row:
-            return {"focus_class_codes":"","focus_report_codes":"","prefer_question_type":""}
+            return {
+                "focus_class_codes": "", "focus_report_codes": "", "prefer_question_type": "",
+                "focus_student_codes": "", "last_class_code": "",
+                "query_count": 0, "last_query_time": None,
+                "prefer_focus_topic": "", "recent_queries": ""
+            }
+        # 兜底新字段（旧数据可能为 NULL）
+        for key in ["focus_student_codes", "last_class_code", "prefer_focus_topic", "recent_queries"]:
+            if not row.get(key):
+                row[key] = ""
+        if not row.get("query_count"):
+            row["query_count"] = 0
         return row
     except:
-        return {"focus_class_codes":"","focus_report_codes":"","prefer_question_type":""}
-    
-def update_teacher_long_memory(teacher_code: str, class_code=None, report_code=None, q_type=None):
+        return {
+            "focus_class_codes": "", "focus_report_codes": "", "prefer_question_type": "",
+            "focus_student_codes": "", "last_class_code": "",
+            "query_count": 0, "last_query_time": None,
+            "prefer_focus_topic": "", "recent_queries": ""
+        }
+
+
+def update_teacher_long_memory(
+    teacher_code: str,
+    class_code=None, report_code=None, student_code=None,
+    question=None, tool_name=None
+):
+    """
+    每次工具调用后更新长期记忆，记录：
+    - 常关注班级/报告/学生（去重，最多10个）
+    - 最近使用的班级
+    - 累计查询次数
+    - 最近问题（滚动窗口5条）
+    - 关注话题偏好（自动推断）
+    """
     try:
         db = pymysql.connect(**DB_CONFIG)
         cursor = db.cursor(pymysql.cursors.DictCursor)
-
-        # 先查原有
         old = get_teacher_long_memory(teacher_code)
-        cls_list = old["focus_class_codes"].split(",") if old["focus_class_codes"] else []
-        rep_list = old["focus_report_codes"].split(",") if old["focus_report_codes"] else []
 
-        # 追加班级
+        # ---- 追加班级 ----
+        cls_list = [c for c in old["focus_class_codes"].split(",") if c] if old["focus_class_codes"] else []
         if class_code and str(class_code) not in cls_list:
             cls_list.append(str(class_code))
-        # 追加报告
+        new_cls = ",".join(cls_list[-10:])
+
+        # ---- 追加报告 ----
+        rep_list = [r for r in old["focus_report_codes"].split(",") if r] if old["focus_report_codes"] else []
         if report_code and str(report_code) not in rep_list:
             rep_list.append(str(report_code))
+        new_rep = ",".join(rep_list[-10:])
 
-        new_cls = ",".join(cls_list[:10])  # 最多存10个
-        new_rep = ",".join(rep_list[:10])
-        new_qtype = q_type if q_type else old["prefer_question_type"]
+        # ---- 追加学生 ----
+        stu_list = [s for s in old["focus_student_codes"].split(",") if s] if old["focus_student_codes"] else []
+        if student_code and str(student_code) not in stu_list:
+            stu_list.append(str(student_code))
+        new_stu = ",".join(stu_list[-10:])
 
-        # 存在则更新，不存在则插入
+        # ---- 最近使用班级 ----
+        new_last_class = str(class_code) if class_code else old.get("last_class_code", "")
+
+        # ---- 累计查询次数 ----
+        new_count = (old.get("query_count") or 0) + 1
+
+        # ---- 最近问题滚动窗口 ----
+        try:
+            recent = json.loads(old["recent_queries"]) if old.get("recent_queries") else []
+        except:
+            recent = []
+        if question:
+            recent.append(question[-80:])  # 截断防溢出
+        recent = recent[-5:]  # 只保留最近5条
+        new_recent = json.dumps(recent, ensure_ascii=False)
+
+        # ---- 关注话题偏好 ----
+        topic = old.get("prefer_focus_topic", "") or ""
+        if tool_name:
+            topic_map = {
+                "tool_get_class_rank": "专注度排行",
+                "tool_get_student_behavior": "学生行为分析",
+                "tool_get_face_mapping": "人脸绑定管理",
+                "tool_get_single_report_detail": "课堂行为报告",
+                "tool_get_teacher_all_reports": "历史课堂查询",
+                "tool_get_time_range_stats": "课堂趋势统计",
+                "tool_get_report_ai_analysis": "AI分析报告",
+                "tool_get_teacher_schedule": "课程表查询",
+            }
+            new_topic = topic_map.get(tool_name, topic)
+        else:
+            new_topic = topic
+
+        # ---- 写入 ----
         cursor.execute("""
             INSERT INTO teacher_long_memory
-            (teacher_code, focus_class_codes, focus_report_codes, prefer_question_type)
-            VALUES (%s, %s, %s, %s)
+            (teacher_code, focus_class_codes, focus_report_codes, prefer_question_type,
+             focus_student_codes, last_class_code, query_count, last_query_time,
+             prefer_focus_topic, recent_queries)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, NOW(), %s, %s)
             ON DUPLICATE KEY UPDATE
-            focus_class_codes=%s, focus_report_codes=%s, prefer_question_type=%s, update_time=NOW()
-        """, (teacher_code, new_cls, new_rep, new_qtype, new_cls, new_rep, new_qtype))
+                focus_class_codes = VALUES(focus_class_codes),
+                focus_report_codes = VALUES(focus_report_codes),
+                focus_student_codes = VALUES(focus_student_codes),
+                last_class_code = VALUES(last_class_code),
+                query_count = VALUES(query_count),
+                last_query_time = NOW(),
+                prefer_focus_topic = VALUES(prefer_focus_topic),
+                recent_queries = VALUES(recent_queries),
+                update_time = NOW()
+        """, (teacher_code, new_cls, new_rep, "",
+              new_stu, new_last_class, new_count,
+              new_topic, new_recent))
 
         db.commit()
         cursor.close()
         db.close()
     except Exception as e:
         print("长期记忆更新失败", e)
-        
+
+
 def build_system_prompt_with_memory(teacher_code: str, base_prompt: str):
     mem = get_teacher_long_memory(teacher_code)
+    recent_queries = ""
+    try:
+        rq = json.loads(mem["recent_queries"]) if mem.get("recent_queries") else []
+        if rq:
+            recent_queries = "、".join(f"「{q}」" for q in rq[-3:])
+    except:
+        pass
+
     extra = f"""
-【用户长期习惯记忆】
-常关注班级ID：{mem['focus_class_codes']}
-常查看报告ID：{mem['focus_report_codes']}
-偏好问题类型：{mem['prefer_question_type']}
-后续回答优先结合该老师常用班级、常用报告，贴合使用习惯。
+【用户长期习惯画像】
+教师工号：{teacher_code}
+累计互动：{mem.get('query_count', 0)} 次
+常关注班级：{mem['focus_class_codes'] or '暂无'}
+最近使用班级：{mem.get('last_class_code', '') or '暂无'}
+常查看报告：{mem['focus_report_codes'] or '暂无'}
+常查询学生：{mem.get('focus_student_codes', '') or '暂无'}
+关注话题：{mem.get('prefer_focus_topic', '') or '暂无'}
+最近提问：{recent_queries or '暂无'}
+
+请结合以上习惯信息，优先使用该老师常用的班级和报告数据回答。
+如果用户提到"我们班""我那个班"，优先使用「最近使用班级」的ID。
     """.strip()
     return base_prompt + "\n" + extra
 

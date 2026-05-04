@@ -26,6 +26,10 @@
             <i class="icon">👥</i>
             <span class="label">班级成员管理</span>
           </router-link>
+          <router-link to="/schedule" class="menu-item">
+            <i class="icon">📅</i>
+            <span class="label">课程安排</span>
+          </router-link>
           <router-link to="/reports" class="menu-item">
             <i class="icon">📝</i>
             <span class="label">学生行为报告</span>

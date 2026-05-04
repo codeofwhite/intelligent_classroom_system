@@ -42,6 +42,7 @@ def teacher_class():
 
             return jsonify({
                 "class_name": class_name,
+                "class_code": class_code,
                 "subject": subject,
                 "student_count": len(students),
                 "students": students

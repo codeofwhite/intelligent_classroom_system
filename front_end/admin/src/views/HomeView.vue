@@ -8,40 +8,22 @@
 
     <!-- 数据统计卡片 -->
     <div class="data-grid">
-      <div class="stat-card blue">
-        <p class="label">今日课程</p>
-        <h3>{{ todayCourse }}</h3>
-        <span>节</span>
-      </div>
-
-      <div class="stat-card green">
-        <p class="label">实时平均抬头率</p>
-        <h3>{{ realTimeLookUp }}%</h3>
-        <span>CV实时分析</span>
-      </div>
-
-      <div class="stat-card orange">
-        <p class="label">课堂专注度</p>
-        <h3>{{ focusRate }}%</h3>
-        <span>综合评分</span>
-      </div>
-
-      <div class="stat-card red">
-        <p class="label">异常行为学生</p>
-        <h3>{{ abnormalStudents }}</h3>
-        <span>走神/低头/讲话</span>
-      </div>
-
       <div class="stat-card purple">
         <p class="label">班级总人数</p>
         <h3>{{ totalStudents }}</h3>
         <span>本班学生总数</span>
       </div>
 
-      <div class="stat-card cyan">
-        <p class="label">待推送报告</p>
-        <h3>{{ waitPushReports }}</h3>
-        <span>家长端可接收</span>
+      <div class="stat-card blue">
+        <p class="label">当前班级</p>
+        <h3>{{ currentClass || '--' }}</h3>
+        <span>{{ subjectName || '待分配' }}</span>
+      </div>
+
+      <div class="stat-card green">
+        <p class="label">学生列表</p>
+        <h3>{{ studentList.length }}</h3>
+        <span>已录入学生</span>
       </div>
     </div>
 
@@ -56,10 +38,6 @@
         <button class="quick-btn" @click="goToMember">
           <span>👥</span>
           班级成员
-        </button>
-        <button class="quick-btn" @click="goToAnalysis">
-          <span>📈</span>
-          历史趋势
         </button>
         <button class="quick-btn" @click="goToSchedule">
           <span>📅</span>
@@ -140,12 +118,7 @@ const subjectName = ref('')
 const today = ref('')
 
 // 统计数据
-const todayCourse = ref(4)
-const realTimeLookUp = ref(92)
-const focusRate = ref(88)
-const abnormalStudents = ref(0)
 const totalStudents = ref(0)
-const waitPushReports = ref(0)
 
 // 学生列表
 const studentList = ref([])
@@ -166,12 +139,12 @@ const loadTeacherData = async () => {
   if (!userInfo) return
 
   teacherName.value = userInfo.name
-  const userId = userInfo.id
+  const userCode = userInfo.user_code
 
   try {
     // 1. 获取老师的班级、科目
     const { data } = await axios.post('http://localhost:5001/teacher-class', {
-      user_id: userId
+      user_code: userCode
     })
 
     currentClass.value = data.class_name
@@ -196,7 +169,6 @@ onMounted(() => {
 const router = useRouter()
 
 const goToClass = () => router.push('/videos')
-const goToAnalysis = () => router.push('/analysis') // 新增：历史趋势
 const goToSchedule = () => router.push('/schedule') // 新增：课程安排
 const goToMember = () => router.push({ name: 'members' })
 const goToReport = () => router.push('/reports')
@@ -296,7 +268,7 @@ const goToReport = () => router.push('/reports')
 
 .quick-grid {
   display: grid;
-  grid-template-columns: repeat(5, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   gap: 16px;
 }
 

@@ -59,6 +59,13 @@ def upload_video():
     base_tmp = "./tmp_upload"
     os.makedirs(base_tmp, exist_ok=True)
 
+    # 清理旧的关键帧，防止跨视频污染
+    for old_kf in glob.glob(os.path.join(KEY_FRAME_SAVE_DIR, "global_frame_*.jpg")):
+        try:
+            os.remove(old_kf)
+        except:
+            pass
+
     input_path = os.path.join(base_tmp, "input.mp4")
     output_path = os.path.join(base_tmp, "output.mp4")
     csv_path = os.path.join(base_tmp, "tracks.csv")
@@ -118,6 +125,8 @@ def upload_video():
                 # 2. YOLO-Pose 推理
                 pose_results = model(frame, conf=POSE_CONF)
                 for res in pose_results:
+                    if res.keypoints is None or res.boxes is None:
+                        continue
                     for box, kp in zip(res.boxes.xyxy, res.keypoints):
                         keypoints = kp.data.cpu().numpy().squeeze()
                         behavior = get_behavior(keypoints)
