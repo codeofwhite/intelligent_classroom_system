@@ -1,10 +1,12 @@
 <template>
   <div class="report-page">
+    <!-- 头部 -->
     <div class="header">
-      <h2>👨‍👩‍👧‍👦 家长端 - 孩子课堂行为报告</h2>
-      <p>课堂实时行为统计 & 学习状态分析</p>
+      <h2>👨‍👩‍👧‍👦 孩子课堂行为报告</h2>
+      <p>实时行为统计 · 学习状态分析 · 成长可视化</p>
     </div>
 
+    <!-- 选择孩子 -->
     <div class="student-selector">
       <button 
         v-for="s in studentList" 
@@ -13,13 +15,13 @@
         :class="{ active: selectedCode === s.student_code }"
         @click="loadStudentReport(s.student_code)"
       >
-        {{ s.student_name }}
+        👦 {{ s.student_name }}
       </button>
     </div>
 
-    <!-- 报告列表（和你参考版一模一样） -->
+    <!-- 报告列表 -->
     <div class="list-section" v-if="reportList.length > 0">
-      <h3>课程报告记录</h3>
+      <h3>📋 课程报告记录</h3>
       <div
         class="item"
         v-for="item in reportList"
@@ -27,8 +29,8 @@
         @click="openDetail(item)"
       >
         <div class="left">
-          <div class="subject">课堂报告</div>
-          <div class="date">{{ item.lesson_time }} </div>
+          <div class="subject">课堂行为报告</div>
+          <div class="date">{{ item.lesson_time }}</div>
         </div>
         <div class="right">
           <div class="score">{{ item.focus_rate }}%</div>
@@ -39,14 +41,14 @@
 
     <!-- 空状态 -->
     <div class="empty-tip" v-else>
-      请选择孩子查看报告
+      请选择孩子查看课堂报告
     </div>
 
-    <!-- 详情弹窗（完全照搬你能用的版本） -->
+    <!-- 详情弹窗 -->
     <div class="modal" v-if="currentDetail" @click="closeDetail">
       <div class="modal-content" @click.stop>
         <div class="modal-header">
-          <h3>课堂行为详情</h3>
+          <h3>📊 课堂行为详情</h3>
           <button @click="closeDetail">×</button>
         </div>
 
@@ -57,7 +59,7 @@
           </div>
           <div class="info-row">
             <span>专注度</span>
-            <span class="blue">{{ currentDetail.focus_rate }}%</span>
+            <span class="purple">{{ currentDetail.focus_rate }}%</span>
           </div>
 
           <div class="stats">
@@ -74,6 +76,18 @@
               <span class="red">{{ currentDetail.looking_down }}</span>
             </div>
           </div>
+
+          <!-- AI 建议 -->
+          <div class="suggest" v-if="currentDetail.ai_comment">
+            <h4>💡 AI 学习建议</h4>
+            <p>{{ currentDetail.ai_comment }}</p>
+          </div>
+
+          <!-- 老师评语 -->
+          <div class="comment" v-if="currentDetail.teacher_comment">
+            <h4>👨‍🏫 老师评语</h4>
+            <p>{{ currentDetail.teacher_comment }}</p>
+          </div>
         </div>
       </div>
     </div>
@@ -84,7 +98,6 @@
 import { ref, onMounted } from 'vue'
 import axios from 'axios'
 
-// 读取家长登录信息
 let parentUser = null
 try {
   parentUser = JSON.parse(localStorage.getItem('currentUser'))
@@ -92,10 +105,9 @@ try {
 
 const studentList = ref([])
 const selectedCode = ref(null)
-const reportList = ref([])        // 报告列表
-const currentDetail = ref(null)   // 弹窗详情
+const reportList = ref([])
+const currentDetail = ref(null)
 
-// 获取孩子列表
 onMounted(async () => {
   if (!parentUser || parentUser.role !== 'parent') {
     alert('请以家长身份登录')
@@ -113,7 +125,6 @@ onMounted(async () => {
   }
 })
 
-// ✅ 加载孩子报告（完全和你参考版一样，不会404）
 async function loadStudentReport(student_code) {
   selectedCode.value = student_code
   try {
@@ -127,143 +138,228 @@ async function loadStudentReport(student_code) {
   }
 }
 
-// 打开弹窗
 const openDetail = (item) => {
   currentDetail.value = item
 }
 
-// 关闭弹窗
 const closeDetail = () => {
   currentDetail.value = null
 }
 </script>
 
 <style scoped>
-/* 完全照搬你能用的样式 */
 .report-page {
-  padding: 20px;
-  background: #f7f8fa;
+  padding: 24px;
+  background: linear-gradient(to bottom, #f9faff, #f1f5ff);
   min-height: 100vh;
+  font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
 }
+
+/* 头部 */
 .header {
   text-align: center;
-  margin-bottom: 16px;
+  margin-bottom: 24px;
 }
+.header h2 {
+  font-size: 24px;
+  font-weight: 600;
+  margin: 0 0 8px 0;
+  color: #2c3e50;
+}
+.header p {
+  font-size: 14px;
+  color: #7f8c8d;
+  margin: 0;
+}
+
+/* 选择孩子 */
 .student-selector {
   display: flex;
   gap: 12px;
   justify-content: center;
-  margin-bottom: 30px;
+  margin-bottom: 26px;
+  flex-wrap: wrap;
 }
 .student-btn {
-  padding: 10px 18px;
-  border: 1px solid #42b983;
-  background: #fff;
-  border-radius: 8px;
-  cursor: pointer;
-}
-.student-btn.active {
-  background: #42b983;
-  color: white;
-}
-
-/* 列表样式和你参考版完全一样 */
-.list-section h3 {
-  font-size: 16px;
-  margin: 0 0 10px 4px;
-}
-.item {
+  padding: 12px 20px;
+  border: 1px solid #e2e8ff;
   background: #fff;
   border-radius: 12px;
-  padding: 14px 16px;
-  margin-bottom: 10px;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+.student-btn.active {
+  background: linear-gradient(90deg, #7c5fff, #9b77ff);
+  color: white;
+  border-color: #7c5fff;
+  transform: scale(1.03);
+}
+
+/* 报告列表 */
+.list-section h3 {
+  font-size: 17px;
+  font-weight: 600;
+  margin: 0 0 14px 4px;
+  color: #2c3e50;
+}
+.item {
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 18px 16px;
+  margin-bottom: 12px;
   display: flex;
   justify-content: space-between;
   align-items: center;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  transition: all 0.25s ease;
+  border: 1px solid rgba(255,255,255,0.6);
+}
+.item:active {
+  transform: scale(0.97);
 }
 .left .subject {
-  font-weight: bold;
-  font-size: 15px;
-  margin-bottom: 4px;
+  font-weight: 600;
+  font-size: 16px;
+  margin-bottom: 6px;
+  color: #2c3e50;
 }
 .left .date {
   font-size: 13px;
-  color: #999;
+  color: #7f8c8d;
 }
 .right {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
 }
 .score {
-  font-size: 16px;
+  font-size: 18px;
   font-weight: bold;
-  color: #429dff;
+  color: #7c5fff;
 }
 .arrow {
-  color: #ccc;
+  color: #bdc3c7;
   font-size: 16px;
 }
 
 /* 弹窗 */
 .modal {
   position: fixed;
-  top: 0; left: 0; right: 0; bottom: 0;
-  background: rgba(0,0,0,0.5);
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.45);
   display: flex;
-  align-items: flex-end;
+  align-items: center;
   justify-content: center;
   z-index: 999;
+  backdrop-filter: blur(4px);
 }
 .modal-content {
   background: #fff;
-  width: 100%; max-width: 480px;
-  border-radius: 20px 20px 0 0;
-  max-height: 80vh;
+  width: 90%;
+  max-width: 420px;
+  border-radius: 22px;
+  max-height: 85vh;
   overflow-y: auto;
+  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
+  animation: modalUp 0.3s ease;
 }
+@keyframes modalUp {
+  from { transform: translateY(40px); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
 .modal-header {
-  padding: 16px;
-  border-bottom: 1px solid #eee;
+  padding: 20px;
+  border-bottom: 1px solid #f1f1f1;
   display: flex;
   justify-content: space-between;
   align-items: center;
 }
-.modal-header button {
-  background: none;
-  border: none;
-  font-size: 22px;
-  cursor: pointer;
+.modal-header h3 {
+  margin: 0;
+  font-size: 18px;
+  font-weight: 600;
+  color: #2c3e50;
 }
+.modal-header button {
+  background: #f5f6fa;
+  border: none;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 18px;
+  cursor: pointer;
+  color: #7f8c8d;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
 .detail-body {
-  padding: 20px;
+  padding: 24px;
 }
 .info-row {
   display: flex;
   justify-content: space-between;
-  padding: 10px 0;
+  padding: 12px 0;
+  font-size: 15px;
+  color: #2c3e50;
 }
+
+/* 统计卡片 */
 .stats {
-  background: #f5f7fa;
-  border-radius: 10px;
-  padding: 14px;
+  background: #f8f9fd;
+  border-radius: 14px;
+  padding: 18px 14px;
   display: flex;
   justify-content: space-around;
-  margin: 16px 0;
+  margin: 20px 0;
 }
 .stats div {
   text-align: center;
 }
 .stats label {
   font-size: 13px;
-  color: #888;
+  color: #7f8c8d;
+  display: block;
+  margin-bottom: 6px;
 }
-.red { color: #f56c6c; }
-.blue { color: #429dff; }
+.stats span {
+  font-weight: 600;
+  font-size: 18px;
+  color: #2c3e50;
+}
+.red { color: #ff4757 !important; }
+.purple { color: #7c5fff !important; }
+
+/* 建议 & 评语 */
+.suggest, .comment {
+  margin-bottom: 20px;
+}
+.suggest h4, .comment h4 {
+  font-size: 16px;
+  font-weight: 600;
+  margin: 0 0 10px 0;
+  color: #2c3e50;
+}
+.suggest p, .comment p {
+  background: #f8f9fd;
+  padding: 16px;
+  border-radius: 14px;
+  font-size: 14px;
+  line-height: 1.6;
+  margin: 0;
+  color: #34495e;
+}
 
 .empty-tip {
   text-align: center;
   color: #999;
-  padding: 40px;
+  padding: 60px 20px;
+  font-size: 15px;
 }
 </style>

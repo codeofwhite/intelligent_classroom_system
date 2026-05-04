@@ -175,7 +175,7 @@ async function openBindPopup() {
   for (const fid of faceIds.value) {
     if (existingMap[fid]) {
       // 找到对应的学生对象，塞给 bindMap
-      const stu = studentList.value.find(s => s.student_code === existingMap[fid].student_code)
+      const stu = studentList.value.find(s => s.student_code === existingMap[fid].id)
       if (stu) bindMap.value[fid] = stu
     }
   }

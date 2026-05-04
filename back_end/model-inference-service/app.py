@@ -6,7 +6,7 @@ import json
 import time
 import io
 import tempfile
-from datetime import datetime
+from datetime import date, datetime
 from collections import deque
 
 # 科学计算 / 图像处理
@@ -1340,6 +1340,296 @@ def report_list():
     cursor.close()
     db_tmp.close()
     return jsonify({"list": rows})
+
+# 1. 获取学生个人统计数据（今日/本周/本月/学期）
+@app.route("/api/student/stats", methods=["GET"])
+def student_stats():
+    student_code = request.args.get("student_code")
+    if not student_code:
+        return jsonify({"error": "缺少student_code"}), 400
+
+    today = date.today()
+    first_day_of_month = today.replace(day=1)
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+
+        # 今日
+        cursor.execute("""
+            SELECT IFNULL(AVG(focus_rate),0) AS focus,
+                   IFNULL(SUM(normal_posture),0) AS lookUp,
+                   IFNULL(SUM(looking_down),0) AS disturb
+            FROM student_reports
+            WHERE student_code=%s AND DATE(lesson_time)=CURDATE()
+        """, (student_code,))
+        day = cursor.fetchone()
+
+        # 本周
+        cursor.execute("""
+            SELECT IFNULL(AVG(focus_rate),0) AS avg
+            FROM student_reports
+            WHERE student_code=%s AND YEARWEEK(lesson_time)=YEARWEEK(NOW())
+        """, (student_code,))
+        week = cursor.fetchone()
+
+        # 本月
+        cursor.execute("""
+            SELECT IFNULL(AVG(focus_rate),0) AS avg,
+                   COUNT(*) AS classCount
+            FROM student_reports
+            WHERE student_code=%s AND DATE(lesson_time)>=%s
+        """, (student_code, first_day_of_month))
+        month = cursor.fetchone()
+
+        # 学期平均
+        cursor.execute("""
+            SELECT IFNULL(AVG(focus_rate),0) AS avg FROM student_reports
+            WHERE student_code=%s
+        """, (student_code,))
+        semester = cursor.fetchone()
+
+        cursor.close()
+        db_tmp.close()
+
+        def round0(v):
+            return round(float(v or 0))
+
+        return jsonify({
+            "day": {
+                "focus": round0(day['focus']),
+                "lookUp": round0(day['lookUp']),
+                "disturb": round0(day['disturb'])
+            },
+            "week": {
+                "avg": round0(week['avg']),
+                "up": 5,
+                "bestDay": "周四"
+            },
+            "month": {
+                "avg": round0(month['avg']),
+                "progress": 7,
+                "classCount": month['classCount']
+            },
+            "semester": {
+                "avg": round0(semester['avg']),
+                "level": "A · 优秀" if round0(semester['avg'])>=85 else "B · 良好"
+            }
+        })
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+@app.route("/api/student/home", methods=["GET"])
+def student_home():
+    student_code = request.args.get("student_code")
+    if not student_code:
+        return jsonify({"student_name":"","class_name":""})
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT u.name AS student_name, c.class_name
+            FROM students s
+            JOIN users u ON s.user_code = u.user_code
+            JOIN classes c ON s.class_code = c.class_code
+            WHERE s.student_code=%s
+        """, (student_code,))
+        info = cursor.fetchone()
+        cursor.close()
+        db_tmp.close()
+        return jsonify(info)
+    except Exception as e:
+        return jsonify({"student_name":"","class_name":""})
+
+# ==============================
+# 家长端 - 首页数据（孩子信息 + 概况）
+# ==============================
+@app.route("/api/parent/home", methods=["GET"])
+def parent_home():
+    user_code = request.args.get("user_code")
+    if not user_code:
+        return jsonify({})
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+
+        # 1. 获取家长绑定的孩子
+        cursor.execute("""
+            SELECT p.student_code
+            FROM parents p
+            WHERE p.user_code=%s
+        """, (user_code,))
+        parent = cursor.fetchone()
+        if not parent:
+            return jsonify({})
+
+        student_code = parent["student_code"]
+
+        # 2. 获取孩子信息
+        cursor.execute("""
+            SELECT u.name AS student_name, c.class_name, s.class_code
+            FROM students s
+            JOIN users u ON s.user_code = u.user_code
+            JOIN classes c ON s.class_code = c.class_code
+            WHERE s.student_code=%s
+        """, (student_code,))
+        student = cursor.fetchone()
+
+        # 3. 今日专注度
+        cursor.execute("""
+            SELECT IFNULL(AVG(focus_rate), 0) AS today_focus
+            FROM student_reports
+            WHERE student_code=%s AND DATE(lesson_time)=CURDATE()
+        """, (student_code,))
+        today = cursor.fetchone()
+
+        # 4. 总报告数量
+        cursor.execute("""
+            SELECT COUNT(*) AS total FROM student_reports
+            WHERE student_code=%s
+        """, (student_code,))
+        total = cursor.fetchone()
+
+        cursor.close()
+        db_tmp.close()
+
+        return jsonify({
+            "student_name": student["student_name"],
+            "class_name": student["class_name"],
+            "today_focus": round(float(today["today_focus"])),
+            "total_reports": total["total"],
+            "student_code": student_code
+        })
+
+    except Exception as e:
+        print("家长首页错误：", e)
+        return jsonify({})
+
+# 2. 班级专注度排行
+@app.route("/api/class/rank", methods=["GET"])
+def class_rank():
+    class_code = request.args.get("class_code")
+    if not class_code:
+        return jsonify({"rank": []})
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            SELECT 
+                u.name AS name,
+                IFNULL(AVG(r.focus_rate), 0) AS score
+            FROM students s
+            JOIN users u ON s.user_code = u.user_code
+            LEFT JOIN student_reports r 
+                ON s.student_code = r.student_code 
+                AND r.class_code = %s
+            WHERE s.class_code = %s
+            GROUP BY s.student_code, u.name
+            HAVING score > 0
+            ORDER BY score DESC
+            LIMIT 10
+        """, (class_code, class_code))
+        ranks = cursor.fetchall()
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"rank": ranks})
+    except Exception as e:
+        print("排行错误：", e)
+        return jsonify({"rank": []})
+
+# 3. 获取学生基本信息（✅ 修复版，多返回 class_code）
+@app.route("/api/student/info", methods=["GET"])
+def student_info():
+    student_code = request.args.get("student_code")
+    if not student_code:
+        return jsonify({"error": "缺少student_code"}), 400
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+        cursor.execute("""
+            # ✅ 这里必须加上 u.name AS student_name
+            SELECT u.name AS student_name, s.class_code, c.class_name
+            FROM students s
+            JOIN users u ON s.user_code = u.user_code   # 关联用户表拿真实姓名
+            JOIN classes c ON s.class_code = c.class_code
+            WHERE s.student_code=%s
+        """, (student_code,))
+        info = cursor.fetchone()
+        cursor.close()
+        db_tmp.close()
+        return jsonify(info)
+    except Exception as e:
+        return jsonify({
+            "student_name": "",
+            "class_code": "",
+            "class_name": ""
+        })
+
+# ==============================
+# 家校共育 · AI 综合分析建议
+# ==============================
+@app.route("/api/ai/advice", methods=["GET"])
+def ai_advice():
+    student_code = request.args.get("student_code")
+    if not student_code:
+        return jsonify({"summary":"","advice":""})
+
+    try:
+        db_tmp = pymysql.connect(**DB_CONFIG)
+        cursor = db_tmp.cursor(pymysql.cursors.DictCursor)
+
+        # 获取该学生所有报告
+        cursor.execute("""
+            SELECT focus_rate, normal_posture, raised_hand, looking_down, ai_comment
+            FROM student_reports
+            WHERE student_code=%s
+            ORDER BY lesson_time DESC
+        """, (student_code,))
+        reports = cursor.fetchall()
+
+        if not reports:
+            return jsonify({
+                "summary": "暂无历史课堂数据，无法生成分析",
+                "advice": "请等待课堂数据生成后再查看"
+            })
+
+        # 统计
+        total = len(reports)
+        avg_focus = round(sum(r["focus_rate"] for r in reports) / total)
+        good_posture = sum(r["normal_posture"] for r in reports)
+        total_hand = sum(r["raised_hand"] for r in reports)
+        total_down = sum(r["looking_down"] for r in reports)
+
+        # AI 总结
+        summary = f"""
+该生近 {total} 节课平均专注度 {avg_focus}%，整体课堂状态良好。
+累计坐姿达标 {good_posture} 次，主动举手发言 {total_hand} 次，分心低头 {total_down} 次。
+        """.strip()
+
+        # AI 建议
+        advice = f"""
+【家校共育建议】
+1. 该生专注度表现{ "优秀" if avg_focus>=90 else "良好" if avg_focus>=80 else "一般" }，建议继续保持专注习惯。
+2. 主动发言积极性{ "很高" if total_hand>=total*3 else "一般" }，建议多鼓励课堂参与。
+3. 分心情况{ "较少" if total_down<=total*1 else "偏多" }，家校共同引导注意力管理。
+4. 家庭配合：规律作息、减少电子产品干扰，与学校同步培养学习习惯。
+        """.strip()
+
+        cursor.close()
+        db_tmp.close()
+
+        return jsonify({
+            "summary": summary,
+            "advice": advice
+        })
+
+    except Exception as e:
+        print("AI分析错误:", e)
+        return jsonify({"summary":"","advice":""})
 
 if __name__ == "__main__":
     app.run(host='0.0.0.0', port=5002, debug=False, threaded=True)

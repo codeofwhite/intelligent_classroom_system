@@ -9,47 +9,18 @@
       <div class="avatar">👦</div>
     </div>
 
-    <!-- 今日课堂 -->
-    <div class="today-card">
-      <div class="card-header">
-        <h3>📅 今日课堂</h3>
-      </div>
-      <div class="today-content">
-        <div class="lesson-item">
-          <div class="dot"></div>
-          <div>
-            <div class="lesson-name">数学 · 分数乘除法</div>
-            <div class="lesson-time">第 3 节 | 09:50 ~ 10:35</div>
-          </div>
-        </div>
-        <div class="tip">专注听讲，积极表现哦～</div>
-      </div>
-    </div>
-
-    <!-- 快捷功能入口 -->
+    <!-- 快捷功能入口（只保留你真实有的页面） -->
     <div class="grid-group">
-      <div class="grid-item" @click="$router.push('/report')">
+      <div class="grid-item" @click="$router.push('/behavior')">
         <div class="icon">📊</div>
         <div class="title">行为报告</div>
-        <div class="desc">查看课堂表现</div>
-      </div>
-
-      <div class="grid-item" @click="$router.push('/rank')">
-        <div class="icon">🏆</div>
-        <div class="title">专注排行</div>
-        <div class="desc">班级荣誉榜</div>
+        <div class="desc">查看课堂表现记录</div>
       </div>
 
       <div class="grid-item" @click="$router.push('/medal')">
         <div class="icon">🎖️</div>
         <div class="title">我的勋章</div>
-        <div class="desc">荣誉成长</div>
-      </div>
-
-      <div class="grid-item" @click="showNotice = true">
-        <div class="icon">📢</div>
-        <div class="title">系统公告</div>
-        <div class="desc">最新通知</div>
+        <div class="desc">荣誉成长体系</div>
       </div>
     </div>
 
@@ -59,15 +30,15 @@
       <div class="help-content">
         <div class="help-item">
           <span>1.</span>
-          <p>每节课后自动生成课堂行为报告</p>
+          <p>每节课后自动生成课堂行为分析报告</p>
         </div>
         <div class="help-item">
           <span>2.</span>
-          <p>专注度越高，可获得更多荣誉勋章</p>
+          <p>专注度表现越好，获得的荣誉勋章越多</p>
         </div>
         <div class="help-item">
           <span>3.</span>
-          <p>老师评语与AI建议会同步推送给你</p>
+          <p>实时查看老师评价与AI学习建议</p>
         </div>
       </div>
     </div>
@@ -77,7 +48,7 @@
       <h3>ℹ️ 关于系统</h3>
       <div class="about-content">
         <p>智慧课堂行为分析系统 · 学生端</p>
-        <p>基于AI视觉分析 | 专注度监测 | 成长激励体系</p>
+        <p>基于AI视觉分析 | 专注度监测 | 成长激励</p>
         <p class="version">v1.0.0</p>
       </div>
     </div>
@@ -90,18 +61,46 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { ref, onMounted } from 'vue'
+import axios from 'axios'
 
-const studentName = ref('张三')
-const className = ref('一年级1班')
-const dateText = ref('2026年04月20日 星期日')
-const showNotice = ref(false)
+const studentName = ref('加载中...')
+const className = ref('')
+const dateText = ref('')
+
+// 获取今天日期
+function getTodayText() {
+  const now = new Date()
+  const year = now.getFullYear()
+  const month = String(now.getMonth() + 1).padStart(2, '0')
+  const day = String(now.getDate()).padStart(2, '0')
+  const week = ['日', '一', '二', '三', '四', '五', '六'][now.getDay()]
+  return `${year}年${month}月${day}日 星期${week}`
+}
+
+onMounted(async () => {
+  dateText.value = getTodayText()
+
+  const user = JSON.parse(localStorage.getItem('currentUser'))
+  const student_code = user?.student_code
+  if (!student_code) return
+
+  try {
+    const { data } = await axios.get('http://localhost:5002/api/student/home', {
+      params: { student_code }
+    })
+    studentName.value = data.student_name
+    className.value = data.class_name
+  } catch (err) {
+    console.error('加载首页失败', err)
+  }
+})
 </script>
 
 <style scoped>
 .student-home {
   padding: 20px;
-  background: #f7f8fa;
+  background: linear-gradient(to bottom, #f8faff, #eff4ff);
   min-height: 100vh;
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
 }
@@ -110,16 +109,16 @@ const showNotice = ref(false)
 .welcome-card {
   background: linear-gradient(90deg, #429dff, #57b9ff);
   color: white;
-  border-radius: 16px;
-  padding: 20px;
+  border-radius: 18px;
+  padding: 22px;
   display: flex;
   justify-content: space-between;
   align-items: center;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
 }
 .welcome-text h2 {
   margin: 0 0 4px 0;
-  font-size: 20px;
+  font-size: 22px;
 }
 .welcome-text p {
   margin: 0;
@@ -127,8 +126,8 @@ const showNotice = ref(false)
   opacity: 0.9;
 }
 .avatar {
-  width: 50px;
-  height: 50px;
+  width: 52px;
+  height: 52px;
   background: rgba(255, 255, 255, 0.2);
   border-radius: 50%;
   display: flex;
@@ -137,66 +136,31 @@ const showNotice = ref(false)
   font-size: 24px;
 }
 
-/* 今日课堂 */
-.today-card {
-  background: white;
-  border-radius: 16px;
-  padding: 18px;
-  margin-bottom: 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
-}
-.card-header h3 {
-  margin: 0 0 12px 0;
-  font-size: 16px;
-}
-.lesson-item {
-  display: flex;
-  align-items: flex-start;
-  gap: 10px;
-  margin-bottom: 10px;
-}
-.dot {
-  width: 8px;
-  height: 8px;
-  background: #429dff;
-  border-radius: 50%;
-  margin-top: 8px;
-}
-.lesson-name {
-  font-weight: bold;
-  font-size: 15px;
-  margin-bottom: 4px;
-}
-.lesson-time {
-  font-size: 12px;
-  color: #999;
-}
-.tip {
-  font-size: 12px;
-  color: #888;
-  margin-top: 8px;
-}
-
 /* 功能网格 */
 .grid-group {
   display: grid;
   grid-template-columns: repeat(2, 1fr);
-  gap: 12px;
-  margin-bottom: 16px;
+  gap: 14px;
+  margin-bottom: 20px;
 }
 .grid-item {
   background: white;
-  border-radius: 16px;
-  padding: 18px 16px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+  border-radius: 18px;
+  padding: 22px 16px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.05);
+  cursor: pointer;
+  transition: 0.2s;
+}
+.grid-item:active {
+  transform: scale(0.97);
 }
 .grid-item .icon {
-  font-size: 24px;
-  margin-bottom: 8px;
+  font-size: 28px;
+  margin-bottom: 10px;
 }
 .grid-item .title {
   font-weight: bold;
-  font-size: 15px;
+  font-size: 16px;
   margin-bottom: 4px;
 }
 .grid-item .desc {
@@ -207,8 +171,8 @@ const showNotice = ref(false)
 /* 区块卡片 */
 .section-card {
   background: white;
-  border-radius: 16px;
-  padding: 18px;
+  border-radius: 18px;
+  padding: 20px;
   margin-bottom: 16px;
 }
 .section-card.dark {

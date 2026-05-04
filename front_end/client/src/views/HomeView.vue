@@ -1,6 +1,6 @@
 <template>
   <div class="home-view">
-    <!-- 顶部欢迎栏（公用，不用改） -->
+    <!-- 顶部欢迎栏 -->
     <header class="welcome-section">
       <div class="user-info">
         <div class="avatar-container" @click="showMenu = !showMenu">
@@ -11,8 +11,10 @@
         </div>
 
         <div class="text">
-          <h2>早安，{{ user.username }}！</h2>
-          <p v-if="user.role === 'student'" class="relation-tag">身份：学生</p>
+          <h2>早安，{{ user.name }}！</h2>
+          <p v-if="user.role === 'student'" class="relation-tag">
+            身份：学生 | 班级：{{ studentInfo.class_name || '加载中...' }}
+          </p>
           <p v-else-if="user.role === 'parent'" class="relation-tag">
             身份：家长（关联学生：{{ children.map(c => c.student_name).join(', ') }}）
           </p>
@@ -20,7 +22,7 @@
       </div>
     </header>
 
-    <!-- ====================== 核心：自动加载不同首页 ====================== -->
+    <!-- 自动加载对应首页 -->
     <div class="page-content">
       <StudentHome v-if="user.role === 'student'" />
       <ParentHome v-else-if="user.role === 'parent'" />
@@ -37,7 +39,8 @@ import ParentHome from '../components/ParentHome.vue'
 
 const router = useRouter()
 const user = ref({})
-const children = ref([]) // 孩子列表（从接口拿）
+const children = ref([])
+const studentInfo = ref({ class_name: '' })
 const showMenu = ref(false)
 
 onMounted(async () => {
@@ -46,18 +49,31 @@ onMounted(async () => {
 
   user.value = JSON.parse(savedUser)
 
-  // ==============================================
-  // ✅ 家长：调用接口加载孩子（真正能显示的版本）
-  // ==============================================
+  // ==========================================
+  // 家长：获取绑定的孩子
+  // ==========================================
   if (user.value.role === 'parent') {
     try {
       const res = await axios.post('http://localhost:5001/parent-children', {
         user_code: user.value.user_code
       })
-      // 接口返回的孩子列表
-      children.value = res.data.children
+      children.value = res.data.children || []
     } catch (err) {
       console.error('获取孩子失败', err)
+    }
+  }
+
+  // ==========================================
+  // 学生：获取班级信息（真实接口）
+  // ==========================================
+  if (user.value.role === 'student') {
+    try {
+      const res = await axios.get('http://localhost:5002/api/student/info', {
+        params: { student_code: user.value.student_code }
+      })
+      studentInfo.value = res.data
+    } catch (err) {
+      console.error('获取学生信息失败', err)
     }
   }
 })
@@ -69,7 +85,6 @@ const handleLogout = () => {
 </script>
 
 <style scoped>
-/* 样式保持你原来的不变 */
 .welcome-section {
   width: 100%;
   padding: 24px 20px;
@@ -105,6 +120,7 @@ const handleLogout = () => {
   border-radius: 10px;
   box-shadow: 0 6px 20px rgba(0,0,0,0.1);
   padding: 5px;
+  z-index: 99;
 }
 .dropdown-menu button {
   padding: 10px 15px;
@@ -126,7 +142,6 @@ const handleLogout = () => {
   display: inline-block;
 }
 
-/* 内容区域 */
 .page-content {
   max-width: 1200px;
   margin: 30px auto;
