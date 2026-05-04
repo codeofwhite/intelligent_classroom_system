@@ -1,69 +1,29 @@
-import face_recognition
+"""
+独立 CLI 人脸识别签到工具
+脱离 Flask 直接运行，使用 OpenCV 窗口显示摄像头画面
+
+用法：
+  python face_engine.py
+  按 q 退出
+"""
 import cv2
-import numpy as np
-from datetime import datetime
-import os
+import face_recognition
 
-# ===================== 配置 =====================
-SIGN_LOG = "sign_log.txt"
-FACE_DIR = "faces/"
+from face_db import load_face_database, sign_in
+import face_db
 
-# ===================== 加载所有人脸库（已修复！） =====================
-def load_face_database():
-    known_face_encodings = []
-    known_face_names = []
-    
-    # 遍历文件夹
-    for img_name in os.listdir(FACE_DIR):
-        if img_name.lower().endswith(("jpg", "png", "jpeg")):
-            img_path = os.path.join(FACE_DIR, img_name)
-            
-            # ✅ 修复点：用 cv2 读取，强制转 RGB，解决格式报错
-            img = cv2.imread(img_path)
-            if img is None:
-                print(f"跳过无效图片：{img_name}")
-                continue
-            image = cv2.cvtColor(img, cv2.COLOR_BGR2RGB)  # 强制转标准RGB
-            
-            # 检测是否有人脸
-            face_locations = face_recognition.face_locations(image)
-            if len(face_locations) == 0:
-                print(f"未检测到人脸：{img_name}")
-                continue
-            
-            # 提取特征
-            face_encoding = face_recognition.face_encodings(image, face_locations)[0]
-            known_face_encodings.append(face_encoding)
-            known_face_names.append(os.path.splitext(img_name)[0])
-    
-    return known_face_encodings, known_face_names
 
-# ===================== 签到记录 =====================
-def sign_in(name):
-    with open(SIGN_LOG, "a+", encoding="utf-8") as f:
-        time_str = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        f.write(f"{name} {time_str}\n")
-    print(f"✅ {name} 签到成功！")
-
-# ===================== 主程序 =====================
-if __name__ == "__main__":
+def main():
     print("正在加载人脸库...")
-    
-    # 自动创建文件夹
-    if not os.path.exists(FACE_DIR):
-        os.makedirs(FACE_DIR)
-        print("已自动创建 faces 文件夹，请放入人脸图片！")
-        exit()
 
-    known_encodings, known_names = load_face_database()
-    
-    if len(known_encodings) == 0:
+    load_face_database()
+
+    if len(face_db.known_encodings) == 0:
         print("❌ 未加载到任何人脸，请检查 faces 文件夹！")
-        exit()
+        return
 
-    print(f"加载完成！共 {len(known_names)} 人")
+    print(f"加载完成！共 {len(face_db.known_names)} 人")
 
-    # 打开摄像头
     cap = cv2.VideoCapture(0)
     signed_set = set()
 
@@ -81,12 +41,12 @@ if __name__ == "__main__":
         face_encodings = face_recognition.face_encodings(rgb_small, face_locations)
 
         for (top, right, bottom, left), encoding in zip(face_locations, face_encodings):
-            matches = face_recognition.compare_faces(known_encodings, encoding)
+            matches = face_recognition.compare_faces(face_db.known_encodings, encoding)
             name = "未知"
 
             if True in matches:
                 idx = matches.index(True)
-                name = known_names[idx]
+                name = face_db.known_names[idx]
 
                 if name not in signed_set:
                     sign_in(name)
@@ -106,3 +66,7 @@ if __name__ == "__main__":
 
     cap.release()
     cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main()
