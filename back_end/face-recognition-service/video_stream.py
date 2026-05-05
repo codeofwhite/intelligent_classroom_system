@@ -4,7 +4,7 @@
 import cv2
 import face_recognition
 
-from face_db import known_encodings, known_names, sign_in
+import face_db
 
 
 def gen_frames():
@@ -26,14 +26,13 @@ def gen_frames():
         face_encodings = face_recognition.face_encodings(rgb_small, face_locations)
 
         for (top, right, bottom, left), encoding in zip(face_locations, face_encodings):
-            matches = face_recognition.compare_faces(known_encodings, encoding)
+            matches = face_recognition.compare_faces(face_db.known_encodings, encoding)
             name = "未知"
 
             if True in matches:
                 idx = matches.index(True)
-                name = known_names[idx]
-                sign_in(name)
-
+                name = face_db.known_names[idx]
+                face_db.sign_in(name)
             # 坐标还原到原图尺寸
             top *= 4
             right *= 4

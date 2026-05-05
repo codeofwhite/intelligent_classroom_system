@@ -56,20 +56,15 @@ def upload_video():
     frame_count = 0
     behavior_data = []
 
-    base_tmp = "./tmp_upload"
-    os.makedirs(base_tmp, exist_ok=True)
+    # 每次请求独立的临时目录，避免跨视频污染
+    request_tmp = tempfile.mkdtemp(prefix="upload_")
+    request_keyframe_dir = os.path.join(request_tmp, "keyframes")
+    os.makedirs(request_keyframe_dir, exist_ok=True)
 
-    # 清理旧的关键帧，防止跨视频污染
-    for old_kf in glob.glob(os.path.join(KEY_FRAME_SAVE_DIR, "global_frame_*.jpg")):
-        try:
-            os.remove(old_kf)
-        except:
-            pass
-
-    input_path = os.path.join(base_tmp, "input.mp4")
-    output_path = os.path.join(base_tmp, "output.mp4")
-    csv_path = os.path.join(base_tmp, "tracks.csv")
-    json_path = os.path.join(base_tmp, "result.json")
+    input_path = os.path.join(request_tmp, "input.mp4")
+    output_path = os.path.join(request_tmp, "output.mp4")
+    csv_path = os.path.join(request_tmp, "tracks.csv")
+    json_path = os.path.join(request_tmp, "result.json")
 
     try:
         file.save(input_path)
@@ -87,6 +82,11 @@ def upload_video():
         tracker = BYTETracker(ByteTrackArgs())
         track_history = {}
         last_capture_frame = 0
+        # 记录所有关键帧信息：[(帧号, 分心人数, 文件路径)]
+        keyframe_records = []
+        # 固定间隔采样关键帧（不管有没有分心都拍一张，用于"正常课堂"场景）
+        sample_interval = max(KEY_FRAME_INTERVAL * 3, 90)  # 至少每90帧采样一张
+        last_sample_frame = 0
 
         while cap.isOpened():
             ret, frame = cap.read()
@@ -99,7 +99,8 @@ def upload_video():
             # ==============================================
             if task_type == "pose":
                 import face_recognition
-                from pose_utils import get_behavior, known_encodings, known_ids, POSE_CONF
+                import pose_utils
+                from pose_utils import get_behavior, POSE_CONF
 
                 rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
 
@@ -111,10 +112,10 @@ def upload_video():
 
                     for (top, right, bottom, left), enc in zip(face_locs, face_encs):
                         sid = "unknown"
-                        if known_encodings:
-                            dists = face_recognition.face_distance(known_encodings, enc)
+                        if pose_utils.known_encodings:
+                            dists = face_recognition.face_distance(pose_utils.known_encodings, enc)
                             if len(dists) > 0 and dists.min() < 0.5:
-                                sid = known_ids[np.argmin(dists)]
+                                sid = pose_utils.known_ids[np.argmin(dists)]
                         face_ids[(left, top, right, bottom)] = sid
 
                         if sid != "unknown":
@@ -227,12 +228,22 @@ def upload_video():
                             time.strftime("%Y-%m-%d %H:%M:%S")
                         ])
 
+                    # 策略1：分心人数达到阈值时拍摄关键帧
                     if (frame_count - last_capture_frame >= KEY_FRAME_INTERVAL and
                             curr_distract_count >= GLOBAL_DISTRACT_NUM):
-                        key_frame_name = f"global_frame_{frame_count}_distract_{curr_distract_count}.jpg"
-                        key_frame_path = os.path.join(KEY_FRAME_SAVE_DIR, key_frame_name)
+                        key_frame_name = f"keyframe_{frame_count}_distract_{curr_distract_count}.jpg"
+                        key_frame_path = os.path.join(request_keyframe_dir, key_frame_name)
                         cv2.imwrite(key_frame_path, frame)
+                        keyframe_records.append((frame_count, curr_distract_count, key_frame_path))
                         last_capture_frame = frame_count
+
+                    # 策略2：定期采样（保证正常课堂也有关键帧）
+                    elif frame_count - last_sample_frame >= sample_interval:
+                        key_frame_name = f"sample_{frame_count}.jpg"
+                        key_frame_path = os.path.join(request_keyframe_dir, key_frame_name)
+                        cv2.imwrite(key_frame_path, frame)
+                        keyframe_records.append((frame_count, curr_distract_count, key_frame_path))
+                        last_sample_frame = frame_count
 
             out.write(frame)
 
@@ -264,11 +275,26 @@ def upload_video():
         json_obj = f"{base}/stats.json"
         csv_obj = f"{base}/tracks.csv"
 
+        # 选取最佳关键帧：优先选分心人数最多的，其次选视频中间的采样帧
         key_frame_minio_path = None
-        key_frames = glob.glob(os.path.join(KEY_FRAME_SAVE_DIR, "global_frame_*.jpg"))
-        if key_frames:
-            key_frames.sort(reverse=True)
-            key_frame_local_path = key_frames[0]
+        key_frame_local_path = None
+        if keyframe_records:
+            # 按分心人数降序排序，选分心最多的那张
+            keyframe_records.sort(key=lambda x: x[1], reverse=True)
+            best = keyframe_records[0]
+            key_frame_local_path = best[2]
+        elif not keyframe_records:
+            # 没有任何关键帧时（极端情况），从视频中间截一帧
+            mid_frame = frame_count // 2
+            cap_seek = cv2.VideoCapture(output_path)
+            cap_seek.set(cv2.CAP_PROP_POS_FRAMES, mid_frame)
+            ret, mid_img = cap_seek.read()
+            cap_seek.release()
+            if ret:
+                key_frame_local_path = os.path.join(request_keyframe_dir, "mid_frame.jpg")
+                cv2.imwrite(key_frame_local_path, mid_img)
+
+        if key_frame_local_path and os.path.exists(key_frame_local_path):
             key_frame_minio_path = f"{base}/keyframe.jpg"
             try:
                 minio_client.fput_object(BUCKET_NAME, key_frame_minio_path, key_frame_local_path)
@@ -302,6 +328,13 @@ def upload_video():
         except Exception as e:
             print("DB ERROR:", e)
 
+        # 清理临时目录（MinIO 已保存，本地不再需要）
+        try:
+            import shutil
+            shutil.rmtree(request_tmp, ignore_errors=True)
+        except:
+            pass
+
         return jsonify({
             "status": "success",
             "model": shared.current_model_name,
@@ -309,6 +342,12 @@ def upload_video():
         })
 
     except Exception as e:
+        # 异常时也清理临时目录
+        try:
+            import shutil
+            shutil.rmtree(request_tmp, ignore_errors=True)
+        except:
+            pass
         print("FINAL ERROR:", e)
         import traceback
         traceback.print_exc()
