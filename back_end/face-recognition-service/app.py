@@ -8,10 +8,10 @@
   - video_stream.py 摄像头视频流 + 实时识别
   - face_engine.py  独立 CLI 工具（脱离 Flask 直接运行签到）
 """
-from flask import Flask, Response, jsonify
+from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
-from face_db import load_face_database, get_sign_logs
+from face_db import load_face_database, get_sign_logs, load_face_database_from_minio
 from video_stream import gen_frames
 
 app = Flask(__name__)
@@ -37,6 +37,21 @@ def get_sign_log():
     return jsonify(logs=logs)
 
 
+@app.route('/reload_faces', methods=['POST'])
+def reload_faces():
+    """从 MinIO 重新加载人脸库（供 model-inference-service 远程调用）"""
+    try:
+        load_face_database_from_minio()
+        return jsonify({"status": "ok", "count": len(__import__('face_db').known_names)})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)}), 500
+
+
 if __name__ == "__main__":
-    load_face_database()
+    # 优先从 MinIO 加载，失败则从本地加载
+    try:
+        load_face_database_from_minio()
+    except Exception as e:
+        print(f"MinIO 加载失败，回退到本地: {e}")
+        load_face_database()
     app.run(host="0.0.0.0", port=5003, debug=True)

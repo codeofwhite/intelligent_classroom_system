@@ -24,7 +24,7 @@ from config import (
     GLOBAL_DISTRACT_NUM
 )
 import shared
-from shared import model, minio_client, BUCKET_NAME, ByteTrackArgs, get_db_connection
+from shared import minio_client, BUCKET_NAME, ByteTrackArgs, get_db_connection
 from utils import get_color
 
 video_bp = Blueprint("video", __name__)
@@ -123,7 +123,7 @@ def upload_video():
                         cv2.putText(frame, sid, (left, top - 10), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 0), 2)
 
                 # 2. YOLO-Pose 推理
-                pose_results = model(frame, conf=POSE_CONF)
+                pose_results = shared.model(frame, conf=POSE_CONF)
                 for res in pose_results:
                     if res.keypoints is None or res.boxes is None:
                         continue
@@ -175,7 +175,7 @@ def upload_video():
             # 分支 2：普通 YOLO 检测
             # ==============================================
             else:
-                results = model.predict(frame, verbose=False, conf=0.25)
+                results = shared.model.predict(frame, verbose=False, conf=0.25)
                 det = results[0].boxes.data.cpu().numpy()
                 curr_distract_count = 0
 

@@ -98,6 +98,7 @@ def teacher_students():
 
             return jsonify({
                 "class_name": class_name,
+                "class_code": class_code,
                 "students": students
             })
     finally:
