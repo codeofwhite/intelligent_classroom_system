@@ -5,6 +5,26 @@
       <p>按班级、课程、时间管理课堂分析记录</p>
     </div>
 
+    <!-- 实时视频预览 -->
+    <div class="card" v-if="showLive">
+      <div class="live-header">
+        <h3>📹 实时课堂画面</h3>
+        <button class="btn-sm" @click="showLive = false">隐藏预览</button>
+      </div>
+      <div class="live-container">
+        <img src="http://localhost:5002/video_feed" class="live-video" @error="liveError = true" @load="liveError = false" />
+        <div v-if="liveError" class="live-error">
+          <p>📷 实时视频流未连接</p>
+          <p>请确认模型推理服务已启动（端口 5002）</p>
+        </div>
+      </div>
+      <p class="live-tip">💡 此为终端设备实时画面，可在课堂终端页面开始录制</p>
+    </div>
+
+    <div v-if="!showLive" class="card">
+      <button class="btn-sm" @click="showLive = true" style="margin-bottom:12px">📹 显示实时画面</button>
+    </div>
+
     <!-- 上传分析 -->
     <div class="card">
       <h3>📂 上传课堂视频进行分析</h3>
@@ -116,6 +136,10 @@ const reportList = ref([])
 const openGroups = ref({})
 
 const classList = ref([])
+
+// 实时预览
+const showLive = ref(false)
+const liveError = ref(false)
 
 // 加载所有班级
 const loadClassList = async () => {
@@ -374,6 +398,54 @@ td {
 .empty {
   text-align: center;
   padding: 30px;
+  color: #999;
+}
+
+/* 实时预览 */
+.live-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 12px;
+}
+
+.live-header h3 {
+  margin: 0;
+}
+
+.live-container {
+  width: 100%;
+  max-width: 640px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid #e5e6eb;
+  background: #000;
+  position: relative;
+}
+
+.live-video {
+  width: 100%;
+  display: block;
+}
+
+.live-error {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  color: #999;
+}
+
+.live-error p {
+  margin: 4px 0;
+}
+
+.live-tip {
+  margin: 8px 0 0 0;
+  font-size: 12px;
   color: #999;
 }
 </style>

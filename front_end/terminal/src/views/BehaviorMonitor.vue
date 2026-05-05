@@ -129,6 +129,7 @@ const recordDuration = ref(0)
 const logContainer = ref(null)
 
 const className = ref('')
+const classCode = ref('')
 const teacherCode = ref('')
 
 const videoFeedUrl = ref('http://localhost:5002/video_feed')
@@ -193,7 +194,7 @@ async function startRecord() {
   try {
     await axios.post('http://localhost:5002/start_record', {
       teacher_code: teacherCode.value || 'T2025001',
-      class_code: 1,
+      class_code: classCode.value || 1,
       lesson_section: '实时课堂'
     })
     recording.value = true
@@ -212,7 +213,7 @@ async function stopRecord() {
   try {
     await axios.post('http://localhost:5002/stop_record', {
       teacher_code: teacherCode.value || 'T2025001',
-      class_code: 1,
+      class_code: classCode.value || 1,
       lesson_section: '实时课堂'
     })
     recording.value = false
@@ -249,7 +250,10 @@ onMounted(() => {
     teacherCode.value = user.teacher_code || ''
     // 加载班级信息
     axios.post('http://localhost:5001/teacher-class', { user_code: user.user_code })
-      .then(({ data }) => { className.value = data.class_name })
+      .then(({ data }) => {
+        className.value = data.class_name
+        classCode.value = data.class_code || ''
+      })
       .catch(() => {})
   }
 
