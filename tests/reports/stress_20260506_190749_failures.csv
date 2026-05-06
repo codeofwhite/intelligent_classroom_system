@@ -1,0 +1,7 @@
+Method,Name,Error,Occurrences
+POST,重载人脸库,"ConnectionRefusedError(10061, '[WinError 10061] 由于目标计算机积极拒绝，无法连接。')",8
+GET,健康检查,"ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None)",8
+POST,重载人脸库,"ConnectionResetError(10054, '远程主机强迫关闭了一个现有的连接。', None, 10054, None)",5
+GET,签到日志,"ConnectionRefusedError(10061, '[WinError 10061] 由于目标计算机积极拒绝，无法连接。')",25
+GET,报告详情,HTTPError('500 Server Error: INTERNAL SERVER ERROR for url: 报告详情'),23
+GET,健康检查,"ConnectionRefusedError(10061, '[WinError 10061] 由于目标计算机积极拒绝，无法连接。')",31

@@ -1,0 +1,926 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>智能课堂系统 - 测试报告</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background: #f0f2f5;
+            color: #333;
+            line-height: 1.6;
+        }
+        .container { max-width: 1200px; margin: 0 auto; padding: 20px; }
+
+        /* 头部 */
+        .header {
+            background: linear-gradient(135deg, #1a73e8, #0d47a1);
+            color: white;
+            padding: 30px 40px;
+            border-radius: 12px;
+            margin-bottom: 24px;
+            box-shadow: 0 4px 20px rgba(26, 115, 232, 0.3);
+        }
+        .header h1 { font-size: 28px; margin-bottom: 8px; }
+        .header p { opacity: 0.9; font-size: 14px; }
+
+        /* 概览卡片 */
+        .overview { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px; margin-bottom: 24px; }
+        .card {
+            background: white;
+            border-radius: 10px;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+            transition: transform 0.2s;
+        }
+        .card:hover { transform: translateY(-2px); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+        .card .number { font-size: 36px; font-weight: bold; margin: 8px 0; }
+        .card .label { font-size: 13px; color: #666; text-transform: uppercase; letter-spacing: 1px; }
+        .card.green .number { color: #34a853; }
+        .card.red .number { color: #ea4335; }
+        .card.blue .number { color: #1a73e8; }
+        .card.orange .number { color: #f9ab00; }
+        .card.purple .number { color: #9334e6; }
+
+        /* 区块 */
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 24px;
+            margin-bottom: 24px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.06);
+        }
+        .section h2 {
+            font-size: 20px;
+            margin-bottom: 16px;
+            padding-bottom: 12px;
+            border-bottom: 2px solid #f0f2f5;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        /* 表格 */
+        table { width: 100%; border-collapse: collapse; }
+        th {
+            background: #f8f9fa;
+            padding: 12px 16px;
+            text-align: left;
+            font-weight: 600;
+            font-size: 13px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            border-bottom: 2px solid #e8eaed;
+        }
+        td {
+            padding: 10px 16px;
+            border-bottom: 1px solid #f0f2f5;
+            font-size: 14px;
+        }
+        tr:hover { background: #f8f9fa; }
+
+        /* 状态标签 */
+        .badge {
+            display: inline-block;
+            padding: 3px 10px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 600;
+        }
+        .badge-pass { background: #e6f4ea; color: #137333; }
+        .badge-fail { background: #fce8e6; color: #c5221f; }
+        .badge-error { background: #fef7e0; color: #b06000; }
+
+        /* 进度条 */
+        .progress-bar {
+            width: 100%;
+            height: 24px;
+            background: #e8eaed;
+            border-radius: 12px;
+            overflow: hidden;
+            margin: 16px 0;
+            display: flex;
+        }
+        .progress-pass { background: #34a853; transition: width 0.5s; }
+        .progress-fail { background: #ea4335; transition: width 0.5s; }
+
+        /* 响应时间条 */
+        .bar-chart { margin: 16px 0; }
+        .bar-row { display: flex; align-items: center; margin: 8px 0; gap: 10px; }
+        .bar-label { width: 180px; font-size: 13px; text-align: right; flex-shrink: 0; }
+        .bar-fill {
+            height: 28px;
+            background: linear-gradient(90deg, #1a73e8, #4285f4);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            padding: 0 10px;
+            color: white;
+            font-size: 12px;
+            font-weight: 600;
+            min-width: 60px;
+            transition: width 0.5s;
+        }
+
+        /* 底部 */
+        .footer {
+            text-align: center;
+            padding: 20px;
+            color: #999;
+            font-size: 13px;
+        }
+
+        /* 筛选按钮 */
+        .filter-bar { display: flex; gap: 8px; margin-bottom: 16px; flex-wrap: wrap; }
+        .filter-btn {
+            padding: 6px 16px;
+            border: 1px solid #dadce0;
+            border-radius: 20px;
+            background: white;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        .filter-btn:hover, .filter-btn.active {
+            background: #1a73e8;
+            color: white;
+            border-color: #1a73e8;
+        }
+
+        /* 服务分组 */
+        .service-group { margin-bottom: 20px; }
+        .service-header {
+            font-size: 15px;
+            font-weight: 600;
+            padding: 10px 16px;
+            background: #f8f9fa;
+            border-radius: 8px;
+            margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        .service-dot {
+            width: 10px;
+            height: 10px;
+            border-radius: 50%;
+            display: inline-block;
+        }
+        .dot-5001 { background: #34a853; }
+        .dot-5002 { background: #1a73e8; }
+        .dot-5003 { background: #f9ab00; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <!-- 头部 -->
+    <div class="header">
+        <h1>🎓 智能课堂系统 - 测试报告</h1>
+        <p>生成时间：2026-05-06 19:25:15 &nbsp;|&nbsp; 基于计算机视觉的智能课堂行为分析系统</p>
+    </div>
+
+    <!-- 概览卡片 -->
+    <div class="overview">
+        <div class="card green">
+            <div class="label">功能测试通过</div>
+            <div class="number">39</div>
+        </div>
+        <div class="card green">
+            <div class="label">功能测试失败</div>
+            <div class="number">0</div>
+        </div>
+        <div class="card blue">
+            <div class="label">功能测试总数</div>
+            <div class="number">39</div>
+        </div>
+        <div class="card orange">
+            <div class="label">压力测试请求数</div>
+            <div class="number">248</div>
+        </div>
+        <div class="card purple">
+            <div class="label">平均响应时间</div>
+            <div class="number">27.0<small>ms</small></div>
+        </div>
+        <div class="card green">
+            <div class="label">请求失败率</div>
+            <div class="number">0.0%</div>
+        </div>
+    </div>
+
+    <div class="section">
+        <h2>📋 功能测试详情</h2>
+
+        <!-- 通过率进度条 -->
+        <div style="margin-bottom: 16px;">
+            <strong>通过率：100.0%</strong>
+            <div class="progress-bar">
+                <div class="progress-pass" style="width: 100.0%"></div>
+            </div>
+        </div>
+
+        <div class="filter-bar">
+            <button class="filter-btn active" onclick="filterTests('all')">全部 (39)</button>
+            <button class="filter-btn" onclick="filterTests('passed')">通过 (39)</button>
+            <button class="filter-btn" onclick="filterTests('failed')">失败 (0)</button>
+        </div>
+
+        <table id="func-tests">
+            <thead>
+                <tr>
+                    <th>测试用例</th>
+                    <th>状态</th>
+                    <th>耗时 (s)</th>
+                </tr>
+            </thead>
+            <tbody>
+                <tr class="service-group-row">
+                    <td colspan="3" class="service-header">
+                        <span class="service-dot dot-5001"></span> 用户中心服务 (5001)
+                    </td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_teacher_success</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_student_success</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_parent_success</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_wrong_password</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_missing_params</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_empty_body</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_nonexistent_user</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_login_wrong_role</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_teacher_class_success</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_teacher_class_invalid_code</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_teacher_students_success</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_teacher_students_empty_code</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_parent_children_success</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_parent_children_invalid_code</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr class="service-group-row">
+                    <td colspan="3" class="service-header">
+                        <span class="service-dot dot-5002"></span> 模型推理服务 (5002)
+                    </td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_service_running</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_get_models</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_switch_model_valid</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_switch_model_invalid</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_upload_no_file</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_upload_missing_params</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_list_videos</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_teacher_reports_no_code</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_teacher_reports_invalid_code</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_report_detail_no_id</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_report_detail_invalid_id</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_report_history_no_params</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_report_list_no_params</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_report_delete_no_id</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_get_realtime_stats</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_get_record_status</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_chat_no_message</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_get_schedule</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr class="service-group-row">
+                    <td colspan="3" class="service-header">
+                        <span class="service-dot dot-5003"></span> 人脸识别服务 (5003)
+                    </td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_service_running</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_index_content</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_get_sign_log</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_sign_log_format</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_reload_faces</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_reload_faces_count</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+                <tr data-outcome="passed">
+                    <td>
+                        <div style="font-weight:500">test_video_feed_accessible</div>
+                        
+                    </td>
+                    <td><span class="badge badge-pass">✓ 通过</span></td>
+                    <td>0</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>🏋️ 压力测试详情</h2>
+
+        <p style="color:#666;margin-bottom:16px;font-size:14px">
+            测试工具：Locust &nbsp;|&nbsp; 模拟多个用户同时访问系统各接口，验证高并发下的系统稳定性
+        </p>
+
+        <h3 style="font-size:16px;margin:20px 0 12px">接口平均响应时间</h3>
+        <div class="bar-chart">
+
+            <div class="bar-row">
+                <div class="bar-label">重载人脸库</div>
+                <div class="bar-fill" style="width:100%">884.1 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">登录接口</div>
+                <div class="bar-fill" style="width:5%">19.9 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">报告详情</div>
+                <div class="bar-fill" style="width:5%">18.8 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">课程表</div>
+                <div class="bar-fill" style="width:5%">17.7 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">教师报告列表</div>
+                <div class="bar-fill" style="width:5%">17.4 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">健康检查</div>
+                <div class="bar-fill" style="width:5%">12.0 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">视频列表</div>
+                <div class="bar-fill" style="width:5%">10.5 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">场景-teacher-登录</div>
+                <div class="bar-fill" style="width:5%">10.1 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">教师-班级信息</div>
+                <div class="bar-fill" style="width:5%">9.5 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">教师-学生列表</div>
+                <div class="bar-fill" style="width:5%">8.9 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">重复登录</div>
+                <div class="bar-fill" style="width:5%">8.6 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">家长-孩子信息</div>
+                <div class="bar-fill" style="width:5%">7.7 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">录制状态</div>
+                <div class="bar-fill" style="width:5%">7.7 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">场景-教师-学生</div>
+                <div class="bar-fill" style="width:5%">6.6 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">场景-教师-班级</div>
+                <div class="bar-fill" style="width:5%">6.5 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">签到日志</div>
+                <div class="bar-fill" style="width:5%">6.5 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">获取模型列表</div>
+                <div class="bar-fill" style="width:5%">6.2 ms</div>
+            </div>
+            <div class="bar-row">
+                <div class="bar-label">实时统计</div>
+                <div class="bar-fill" style="width:5%">4.3 ms</div>
+            </div>
+        </div>
+
+        <h3 style="font-size:16px;margin:20px 0 12px">接口请求统计</h3>
+        <table>
+            <thead>
+                <tr>
+                    <th>接口名称</th>
+                    <th>请求方法</th>
+                    <th>请求数</th>
+                    <th>失败数</th>
+                    <th>平均响应 (ms)</th>
+                    <th>最小 (ms)</th>
+                    <th>最大 (ms)</th>
+                    <th>中位数 (ms)</th>
+                    <th>RPS</th>
+                </tr>
+            </thead>
+            <tbody>
+
+                <tr>
+                    <td>健康检查</td>
+                    <td>GET</td>
+                    <td>40</td>
+                    <td>0</td>
+                    <td>12.0</td>
+                    <td>3.1</td>
+                    <td>122.4</td>
+                    <td>5.0</td>
+                    <td>1.38</td>
+                </tr>
+                <tr>
+                    <td>场景-teacher-登录</td>
+                    <td>POST</td>
+                    <td>40</td>
+                    <td>0</td>
+                    <td>10.1</td>
+                    <td>5.2</td>
+                    <td>36.9</td>
+                    <td>8.0</td>
+                    <td>1.38</td>
+                </tr>
+                <tr>
+                    <td>场景-教师-学生</td>
+                    <td>POST</td>
+                    <td>35</td>
+                    <td>0</td>
+                    <td>6.6</td>
+                    <td>5.1</td>
+                    <td>21.5</td>
+                    <td>6.0</td>
+                    <td>1.21</td>
+                </tr>
+                <tr>
+                    <td>场景-教师-班级</td>
+                    <td>POST</td>
+                    <td>35</td>
+                    <td>0</td>
+                    <td>6.5</td>
+                    <td>4.9</td>
+                    <td>28.6</td>
+                    <td>6.0</td>
+                    <td>1.21</td>
+                </tr>
+                <tr>
+                    <td>实时统计</td>
+                    <td>GET</td>
+                    <td>3</td>
+                    <td>0</td>
+                    <td>4.3</td>
+                    <td>3.9</td>
+                    <td>4.8</td>
+                    <td>4.0</td>
+                    <td>0.1</td>
+                </tr>
+                <tr>
+                    <td>家长-孩子信息</td>
+                    <td>POST</td>
+                    <td>1</td>
+                    <td>0</td>
+                    <td>7.7</td>
+                    <td>7.7</td>
+                    <td>7.7</td>
+                    <td>7.7</td>
+                    <td>0.03</td>
+                </tr>
+                <tr>
+                    <td>录制状态</td>
+                    <td>GET</td>
+                    <td>4</td>
+                    <td>0</td>
+                    <td>7.7</td>
+                    <td>3.8</td>
+                    <td>17.1</td>
+                    <td>4.0</td>
+                    <td>0.14</td>
+                </tr>
+                <tr>
+                    <td>报告详情</td>
+                    <td>GET</td>
+                    <td>4</td>
+                    <td>0</td>
+                    <td>18.8</td>
+                    <td>8.5</td>
+                    <td>35.3</td>
+                    <td>11.0</td>
+                    <td>0.14</td>
+                </tr>
+                <tr>
+                    <td>教师-学生列表</td>
+                    <td>POST</td>
+                    <td>13</td>
+                    <td>0</td>
+                    <td>8.9</td>
+                    <td>6.2</td>
+                    <td>21.6</td>
+                    <td>8.0</td>
+                    <td>0.45</td>
+                </tr>
+                <tr>
+                    <td>教师-班级信息</td>
+                    <td>POST</td>
+                    <td>11</td>
+                    <td>0</td>
+                    <td>9.5</td>
+                    <td>6.0</td>
+                    <td>21.0</td>
+                    <td>9.0</td>
+                    <td>0.38</td>
+                </tr>
+                <tr>
+                    <td>教师报告列表</td>
+                    <td>GET</td>
+                    <td>4</td>
+                    <td>0</td>
+                    <td>17.4</td>
+                    <td>9.2</td>
+                    <td>21.6</td>
+                    <td>18.0</td>
+                    <td>0.14</td>
+                </tr>
+                <tr>
+                    <td>登录接口</td>
+                    <td>POST</td>
+                    <td>5</td>
+                    <td>0</td>
+                    <td>19.9</td>
+                    <td>19.2</td>
+                    <td>21.7</td>
+                    <td>19.2</td>
+                    <td>0.17</td>
+                </tr>
+                <tr>
+                    <td>签到日志</td>
+                    <td>GET</td>
+                    <td>11</td>
+                    <td>0</td>
+                    <td>6.5</td>
+                    <td>3.6</td>
+                    <td>17.3</td>
+                    <td>5.0</td>
+                    <td>0.38</td>
+                </tr>
+                <tr>
+                    <td>获取模型列表</td>
+                    <td>GET</td>
+                    <td>4</td>
+                    <td>0</td>
+                    <td>6.2</td>
+                    <td>4.4</td>
+                    <td>11.1</td>
+                    <td>5.0</td>
+                    <td>0.14</td>
+                </tr>
+                <tr>
+                    <td>视频列表</td>
+                    <td>GET</td>
+                    <td>7</td>
+                    <td>0</td>
+                    <td>10.5</td>
+                    <td>5.9</td>
+                    <td>20.4</td>
+                    <td>8.0</td>
+                    <td>0.24</td>
+                </tr>
+                <tr>
+                    <td>课程表</td>
+                    <td>POST</td>
+                    <td>4</td>
+                    <td>0</td>
+                    <td>17.7</td>
+                    <td>9.0</td>
+                    <td>21.2</td>
+                    <td>20.0</td>
+                    <td>0.14</td>
+                </tr>
+                <tr>
+                    <td>重复登录</td>
+                    <td>POST</td>
+                    <td>22</td>
+                    <td>0</td>
+                    <td>8.6</td>
+                    <td>6.5</td>
+                    <td>19.8</td>
+                    <td>8.0</td>
+                    <td>0.76</td>
+                </tr>
+                <tr>
+                    <td>重载人脸库</td>
+                    <td>POST</td>
+                    <td>5</td>
+                    <td>0</td>
+                    <td>884.1</td>
+                    <td>871.0</td>
+                    <td>899.4</td>
+                    <td>880.0</td>
+                    <td>0.17</td>
+                </tr>
+                <tr style="font-weight:bold;background:#f8f9fa">
+                    <td>汇总</td>
+                    <td>-</td>
+                    <td>248</td>
+                    <td>0</td>
+                    <td>27.0</td>
+                    <td>3.1</td>
+                    <td>899.4</td>
+                    <td>7.0</td>
+                    <td>8.56</td>
+                </tr>
+            </tbody>
+        </table>
+    </div>
+
+    <div class="section">
+        <h2>📊 测试结论</h2>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:20px">
+            <div>
+                <h3 style="font-size:15px;margin-bottom:10px">功能测试</h3>
+                <ul style="padding-left:20px;color:#555">
+<li>共执行 <strong>39</strong> 个测试用例</li><li>通过 <strong style='color:#34a853'>39</strong> 个，失败 <strong style='color:#ea4335'>0</strong> 个</li><li>通过率 <strong>100.0%</strong></li><li>总耗时 <strong>9.1s</strong></li>
+                </ul>
+            </div>
+            <div>
+                <h3 style="font-size:15px;margin-bottom:10px">压力测试</h3>
+                <ul style="padding-left:20px;color:#555">
+<li>总请求数 <strong>248</strong></li><li>平均响应时间 <strong>27.0ms</strong></li><li>吞吐量 <strong>8.56 req/s</strong></li><li>失败率 <strong>0.0%</strong></li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="footer">
+        <p>智能课堂系统 - 自动化测试报告 | 自动生成于 2026-05-06 19:25:15</p>
+    </div>
+</div>
+
+<script>
+function filterTests(type) {
+    const rows = document.querySelectorAll('#func-tests tbody tr[data-outcome]');
+    const btns = document.querySelectorAll('.filter-btn');
+    btns.forEach(b => b.classList.remove('active'));
+    event.target.classList.add('active');
+
+    rows.forEach(row => {
+        if (type === 'all') {
+            row.style.display = '';
+        } else {
+            row.style.display = row.dataset.outcome === type ? '' : 'none';
+        }
+    });
+}
+</script>
+</body>
+</html>
