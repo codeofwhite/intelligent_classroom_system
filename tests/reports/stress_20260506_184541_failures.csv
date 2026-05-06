@@ -1,0 +1,11 @@
+Method,Name,Error,Occurrences
+GET,获取模型列表,HTTPError('404 Client Error: NOT FOUND for url: 获取模型列表'),30
+GET,报告详情,HTTPError('404 Client Error: NOT FOUND for url: 报告详情'),17
+GET,教师报告列表,HTTPError('404 Client Error: NOT FOUND for url: 教师报告列表'),41
+GET,实时统计,HTTPError('404 Client Error: NOT FOUND for url: 实时统计'),26
+POST,课程表,HTTPError('404 Client Error: NOT FOUND for url: 课程表'),12
+GET,健康检查,HTTPError('404 Client Error: NOT FOUND for url: 健康检查'),39
+GET,签到日志,HTTPError('404 Client Error: NOT FOUND for url: 签到日志'),126
+GET,视频列表,HTTPError('404 Client Error: NOT FOUND for url: 视频列表'),18
+GET,录制状态,HTTPError('404 Client Error: NOT FOUND for url: 录制状态'),13
+POST,重载人脸库,HTTPError('404 Client Error: NOT FOUND for url: 重载人脸库'),63
