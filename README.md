@@ -1,52 +1,75 @@
-# Intelligent Classroom System (基于计算机视觉的智能课堂系统)
+# Intelligent Classroom System
 
-本项目是一款采用多端分离架构构建的智能化教学管理平台。系统通过集成前沿的计算机视觉算法，实现课堂状态的实时感知、行为分析及自动化考勤，旨在为教师提供客观的教学反馈，同时为家长提供透明的课堂参与渠道。
+基于计算机视觉的智能课堂行为分析系统，通过 YOLO 目标检测 + 多目标跟踪 + 大模型 Agent，实现课堂专注度实时监测、行为分析、人脸签到和智能报告生成。
 
-## 项目架构
+## 项目结构
 
-系统主要由以下三个部分组成：
-
-* **`back_end`**: 提供核心业务逻辑、数据库交互及视频处理 API。
-* **`front_end` (Client)**: 面向学生与家长。
-    - Admin 终端：面向教师与管理者，涵盖用户画像管理、课程智能排期及多维教学数据看板。
-    - Client 终端：面向学生与家长，提供个性化课堂表现反馈及实时状态查询。
-    - Terminal 终端：部署于教室现场的硬件采集端，负责实时推流、人脸识别签到及原始行为特征提取。
-
----
-
-## 核心功能
-
-1. 高精度实时监测：利用多目标跟踪算法（MOT）实时感知课堂内学生的考勤状态及空间分布。
-2. 多维行为语义分析：通过深度学习模型识别学生在课堂上的关键行为（如举手互动、阅读、书写等），生成量化的专注度趋势图表。
-3. 闭环化课堂管理：自动生成课堂摘要报告，针对异常学习状态实现温和的预警提示，辅助教师优化教学节奏。
-
----
+```
+├── back_end/
+│   ├── model-inference-service/   # 主后端（视频推理、AI Agent、聊天对话）
+│   ├── face-recognition-service/  # 人脸识别签到服务
+│   └── user-center-service/       # 用户中心（登录、权限）
+├── front_end/
+│   ├── admin/       # 教师管理端
+│   ├── client/      # 学生/家长端
+│   └── terminal/    # 教室采集端（推流+签到）
+├── demos/           # 算法演示脚本
+└── tests/           # 接口自动化测试
+```
 
 ## 技术栈
 
-| 模块 | 技术实现 |
-| --- | --- |
-| **后端 (Back-end)** | Flask / FastAPI |
-| **前端 (Front-end)** | Vue.js 3 + Element Plus |
-| **视觉引擎 (CV Core)** | YOLOv8 / ByteTrack / OpenVINO |
-| **部署 (DevOps)** | Docker + Nginx |
+- **后端**: Flask + MySQL + MinIO
+- **前端**: Vue 3 + Element Plus
+- **视觉**: YOLOv8 / ByteTrack / OpenVINO
+- **AI**: 通义千问（DashScope）+ Function Calling Agent
+- **部署**: Docker Compose
 
----
+## 快速开始
 
-## 模型部署与优化
-为确保系统在边缘侧终端的实时性，本项目采用 OpenVINO 框架进行推理加速：
+### 1. 配置环境变量
 
-模型导出命令（以 YOLOv8 为例）：
+复制模板并填入你的密钥：
 
 ```bash
-# 导出 OpenVINO 格式以优化在 Intel 处理器上的推理性能
-yolo export model=yolov8n.pt format=openvino imgsz=640 half=True
+cp .env.example .env
 ```
 
----
+编辑 `.env`，填入 DashScope API Key、数据库密码、MinIO 凭据等。
 
-## 智能交互 Agent 模块
-系统搭载双范式AI智能体，兼顾自动化分析与交互式问答：
+### 2. 启动后端
 
-1. 任务驱动型报告Agent：根据课堂行为检测结果、关键帧图像与课程信息，自动生成结构化课堂综合分析报告，用于课后批量归档与教学评估。
-2. LLM 交互式对话Agent（Function Calling）：基于通义千问大模型实现原生工具调用能力，内置数据库查询、课堂详情读取两类工具。
+```bash
+cd back_end/model-inference-service
+pip install -r requirements.txt
+python app.py
+```
+
+### 3. 启动前端
+
+```bash
+cd front_end/admin
+npm install
+npm run dev
+```
+
+## 核心功能
+
+- **课堂行为检测**: YOLO 实时识别举手、看书、写字、玩手机、低头、睡觉等行为
+- **专注度分析**: 自动计算专注率，生成课堂报告
+- **人脸签到**: 摄像头自动识别学生并签到
+- **AI 助手**: 教师可对话式查询历史课堂数据、班级排行、学生表现
+- **家校互通**: 家长端查看孩子课堂表现与 AI 评语
+
+## Docker 部署
+
+```bash
+cd back_end
+docker-compose up -d
+```
+
+## 注意事项
+
+- `.env` 文件包含敏感密钥，**不要提交到 Git**
+- `.puml`、`.tex`、`.bib` 文件为论文相关，已在 `.gitignore` 中排除
+- 模型权重文件（`.pt`、`.onnx`）不提交，请自行下载或训练
