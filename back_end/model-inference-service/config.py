@@ -27,19 +27,19 @@ MODEL_CONFIGS = {
 # 数据库配置
 # ========================
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "password123",
-    "database": "user_center_db",
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME", "user_center_db"),
     "charset": "utf8mb4"
 }
 
 # ========================
 # MinIO 配置
 # ========================
-MINIO_ENDPOINT = "minio:9000"
-MINIO_ACCESS_KEY = "admin"
-MINIO_SECRET_KEY = "password123"
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "admin")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
 BUCKET_NAME = "video-bucket"
 
 # ========================

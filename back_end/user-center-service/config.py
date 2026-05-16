@@ -7,7 +7,7 @@ import os
 DB_CONFIG = {
     "host": os.getenv('DB_HOST', 'user-db'),
     "user": os.getenv('DB_USER', 'root'),
-    "password": os.getenv('DB_PASSWORD', 'password123'),
+    "password": os.getenv('DB_PASSWORD', ''),
     "database": os.getenv('DB_NAME', 'user_center_db'),
     "port": int(os.getenv('DB_PORT', 3306)),
     "cursorclass": "DictCursor",  # 标记使用方式

@@ -2,26 +2,27 @@ from datetime import datetime, timedelta
 from dashscope import Generation
 import dashscope
 import json
+import os
 import pymysql
 from minio import Minio
 
 # ========================
 # 配置
 # ========================
-dashscope.api_key = "sk-06abd7a7eb514b3ebd611412f0dc3531"
+dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
 
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "password123",
-    "database": "user_center_db",
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME", "user_center_db"),
     "charset": "utf8mb4"
 }
 
 MINIO_CLIENT = Minio(
-    "localhost:9000",
-    access_key="admin",
-    secret_key="password123",
+    os.getenv("MINIO_ENDPOINT", "localhost:9000"),
+    access_key=os.getenv("MINIO_ACCESS_KEY", "admin"),
+    secret_key=os.getenv("MINIO_SECRET_KEY", ""),
     secure=False
 )
 BUCKET_NAME = "video-bucket"

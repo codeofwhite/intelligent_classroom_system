@@ -11,12 +11,12 @@ session_memory = []
 # 长期：班级课程记忆 key:class_id+course_name
 course_long_memory: Dict[str, list] = {}
 
-dashscope.api_key = "sk-06abd7a7eb514b3ebd611412f0dc3531"
+dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
 
 MINIO_CLIENT = Minio(
-    "localhost:9000",
-    access_key="admin",
-    secret_key="password123",
+    os.getenv("MINIO_ENDPOINT", "localhost:9000"),
+    access_key=os.getenv("MINIO_ACCESS_KEY", "admin"),
+    secret_key=os.getenv("MINIO_SECRET_KEY", ""),
     secure=False
 )
 BUCKET_NAME = "video-bucket"

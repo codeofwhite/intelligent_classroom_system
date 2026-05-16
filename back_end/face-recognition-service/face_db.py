@@ -18,7 +18,7 @@ from config import FACE_DIR, SIGN_LOG
 # MinIO 配置
 MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ACCESS = os.getenv("MINIO_ACCESS", "admin")
-MINIO_SECRET = os.getenv("MINIO_SECRET", "password123")
+MINIO_SECRET = os.getenv("MINIO_SECRET", "")
 FACE_BUCKET = "face-images"
 
 # 全局人脸数据

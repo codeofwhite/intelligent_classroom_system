@@ -5,6 +5,7 @@
 - 获取会话消息
 - 删除会话
 """
+import os
 from flask import Blueprint, request, jsonify
 import pymysql
 from dashscope import Generation
@@ -12,12 +13,12 @@ from dashscope import Generation
 from shared import get_db_connection
 from chat_agent import chat_agent_api, get_session_messages, get_teacher_sessions
 
-# 你的数据库配置（从别的地方复制过来）
+# 数据库配置（从环境变量读取）
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "password123",
-    "database": "user_center_db",
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME", "user_center_db"),
     "charset": "utf8mb4"
 }
 

@@ -1,5 +1,6 @@
+import os
 import dashscope
-dashscope.api_key = "sk-06abd7a7eb514b3ebd611412f0dc3531"
+dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
 
 image_path = "key_frames/global_frame_30_distract_16.jpg"
 

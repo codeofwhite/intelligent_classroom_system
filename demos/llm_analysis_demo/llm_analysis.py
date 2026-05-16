@@ -24,7 +24,7 @@ csv_summary = summarize_behavior('classroom_analysis_results.csv')
 print(csv_summary)
 
 def generate_report(summary_text):
-    dashscope.api_key = 'sk-06abd7a7eb514b3ebd611412f0dc3531'
+    dashscope.api_key = os.getenv('DASHSCOPE_API_KEY', '')
     
     prompt = f"""
     以下是从智能教室系统提取的 CSV 统计数据：

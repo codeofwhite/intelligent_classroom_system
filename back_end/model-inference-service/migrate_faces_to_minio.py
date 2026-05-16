@@ -10,16 +10,16 @@ import pymysql
 from minio import Minio
 
 DB_CONFIG = {
-    "host": "localhost",
-    "user": "root",
-    "password": "password123",
-    "database": "user_center_db",
+    "host": os.getenv("DB_HOST", "localhost"),
+    "user": os.getenv("DB_USER", "root"),
+    "password": os.getenv("DB_PASSWORD", ""),
+    "database": os.getenv("DB_NAME", "user_center_db"),
     "charset": "utf8mb4"
 }
 
-MINIO_ENDPOINT = "localhost:9000"
-MINIO_ACCESS = "admin"
-MINIO_SECRET = "password123"
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
+MINIO_ACCESS = os.getenv("MINIO_ACCESS_KEY", "admin")
+MINIO_SECRET = os.getenv("MINIO_SECRET_KEY", "")
 FACE_BUCKET = "face-images"
 
 FACE_LIB_DIR = "face_lib"  # model-inference-service 下的 face_lib 目录

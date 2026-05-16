@@ -3,6 +3,7 @@ AI 分析 蓝图
 - AI 生成学生行为评语
 - 家校共育 AI 综合分析建议
 """
+import os
 import pymysql
 from flask import Blueprint, request, jsonify
 from openai import OpenAI
@@ -33,7 +34,7 @@ def ai_analyze():
 """
 
     client = OpenAI(
-        api_key="sk-06abd7a7eb514b3ebd611412f0dc3531",
+        api_key=os.getenv("DASHSCOPE_API_KEY", ""),
         base_url="https://dashscope.aliyuncs.com/compatible-mode/v1",
     )
     completion = client.chat.completions.create(

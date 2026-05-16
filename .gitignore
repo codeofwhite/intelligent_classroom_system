@@ -20,6 +20,11 @@ __pycache__/
 .vscode/
 .cline/
 
+# ====== 环境变量（含敏感信息） ======
+.env
+.env.local
+.env.production
+
 # ====== Node.js ======
 node_modules/
 package-lock.json
@@ -39,9 +44,21 @@ env/
 *.tmp
 *.swp
 
+# ====== 毕业设计论文相关（保密） ======
+*.puml
+*.tex
+*.bib
+
+# ====== 测试报告（可能含敏感信息） ======
+tests/reports/
+.pytest_cache/
+
 # ====== 指定大文件夹（第三方库/数据） ======
 yolov5-slowfast-deepsort-PytorchVideo/deep_sort/deep_sort/deep/checkpoint/
 yolov5-slowfast-deepsort-PytorchVideo/demo/
 yolov5-slowfast-deepsort-PytorchVideo/remake-yolov5-slowfast-deepsort-PytorchVideo/
 yolov5-slowfast-deepsort-PytorchVideo/slowfast_file/
 yolov5-slowfast-deepsort-PytorchVideo/yolov5_file/
+
+# ====== Benchmark 结果 ======
+benchmark_results.json

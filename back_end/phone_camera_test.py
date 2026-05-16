@@ -19,9 +19,9 @@ model = YOLO(os.path.join(MODELS_DIR, current_model_name), task='detect') if cur
 
 # --- 1. 配置 MinIO 连接 ---
 minio_client = Minio(
-    "localhost:9000",
-    access_key="admin",
-    secret_key="password123",
+    os.getenv("MINIO_ENDPOINT", "localhost:9000"),
+    access_key=os.getenv("MINIO_ACCESS_KEY", "admin"),
+    secret_key=os.getenv("MINIO_SECRET_KEY", ""),
     secure=False
 )
 BUCKET_NAME = "video-bucket"

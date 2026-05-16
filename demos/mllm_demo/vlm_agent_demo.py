@@ -1,11 +1,12 @@
+import os
 import dashscope
 from dashscope import MultiModalConversation
 from collections import Counter
 import pandas as pd
 import io
 
-# 配置 API Key
-dashscope.api_key = "sk-06abd7a7eb514b3ebd611412f0dc3531"
+# 配置 API Key（从环境变量读取）
+dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
 
 def analyze_first_frame(image_path, csv_data):
     # 1. 简单处理 CSV 数据获取统计信息
