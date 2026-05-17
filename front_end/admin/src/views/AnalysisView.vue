@@ -230,11 +230,49 @@ function renderCharts() {
     series: [{ type: 'pie', radius: ['40%', '70%'], data: pieData }]
   })
 
-  lineChart.setOption({
-    xAxis: { type: 'category', data: ['0s', '20s', '40s', '60s', '80s', '100s'] },
-    yAxis: { type: 'value' },
-    series: [{ type: 'line', smooth: true, data: [95, 88, 82, 76, 85, 90] }]
-  })
+  // 专注度趋势：先显示加载中，然后异步获取真实数据
+  lineChart.showLoading({ text: '加载趋势数据...' })
+  loadFocusTrend()
+}
+
+async function loadFocusTrend() {
+  try {
+    const res = await axios.get('http://localhost:5002/api/report/focus_trend', {
+      params: { id: reportId }
+    })
+    const trendLabels = res.data.labels || []
+    const trendData = res.data.data || []
+
+    if (trendLabels.length > 0) {
+      lineChart.setOption({
+        xAxis: { type: 'category', data: trendLabels },
+        yAxis: { type: 'value', min: 0, max: 100, name: '专注度(%)' },
+        tooltip: { trigger: 'axis', formatter: '{b} 进度<br/>专注度: {c}%' },
+        series: [{
+          type: 'line',
+          smooth: true,
+          data: trendData,
+          areaStyle: { opacity: 0.15 },
+          lineStyle: { width: 2 }
+        }]
+      })
+    } else {
+      lineChart.setOption({
+        xAxis: { type: 'category', data: ['无数据'] },
+        yAxis: { type: 'value', min: 0, max: 100 },
+        series: [{ type: 'line', data: [0] }]
+      })
+    }
+  } catch (e) {
+    console.error('加载专注度趋势失败:', e)
+    lineChart.setOption({
+      xAxis: { type: 'category', data: ['加载失败'] },
+      yAxis: { type: 'value', min: 0, max: 100 },
+      series: [{ type: 'line', data: [0] }]
+    })
+  } finally {
+    lineChart.hideLoading()
+  }
 }
 
 onMounted(async () => {

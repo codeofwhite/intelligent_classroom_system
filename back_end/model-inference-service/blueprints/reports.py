@@ -7,13 +7,16 @@
 - 获取报告中的学生列表
 - 绑定track_id与学生
 - 保存/查询/删除学生个人报告
+- 获取专注度趋势数据
 """
 import io
+import csv
 import json
 from datetime import datetime
 
 from flask import Blueprint, request, jsonify
 
+import shared
 from shared import minio_client, BUCKET_NAME, get_db_connection
 
 reports_bp = Blueprint("reports", __name__)
@@ -317,3 +320,88 @@ def report_list():
     cursor.close()
     db_tmp.close()
     return jsonify({"list": rows})
+
+
+@reports_bp.route("/api/report/focus_trend", methods=["GET"])
+def focus_trend():
+    """
+    根据行为轨迹 CSV 计算专注度趋势。
+    将总帧数分成 N 个时间窗口，每个窗口统计 focus/distract 行为占比。
+    返回 { "labels": [...], "data": [...] }
+    """
+    report_id = request.args.get("id")
+    num_segments = int(request.args.get("segments", 10))
+    if num_segments < 2:
+        num_segments = 10
+    if num_segments > 30:
+        num_segments = 30
+
+    try:
+        # 1. 获取报告信息
+        db_tmp = get_db_connection()
+        cursor = db_tmp.cursor()
+        cursor.execute("SELECT minio_csv_path FROM course_reports WHERE id=%s", (report_id,))
+        row = cursor.fetchone()
+        cursor.close()
+        db_tmp.close()
+
+        if not row:
+            return jsonify({"labels": [], "data": []})
+
+        csv_path = row[0]
+        if not csv_path:
+            return jsonify({"labels": [], "data": []})
+
+        # 2. 下载 CSV
+        import tempfile, os
+        local_csv = os.path.join(tempfile.gettempdir(), f"trend_{report_id}.csv")
+        try:
+            minio_client.fget_object(BUCKET_NAME, csv_path, local_csv)
+        except Exception:
+            return jsonify({"labels": [], "data": []})
+
+        # 3. 读取行为轨迹数据
+        config = shared.current_model_config
+        focus_labels = set()
+        if config:
+            focus_labels = set(config["focus"])
+
+        track_data = []  # [(frame_id, behavior_label)]
+        with open(local_csv, 'r', encoding='utf-8') as f:
+            reader = csv.DictReader(f)
+            for row_data in reader:
+                fid = int(row_data.get("frame_id", 0))
+                beh = row_data.get("behavior_label", "")
+                track_data.append((fid, beh))
+
+        if not track_data:
+            return jsonify({"labels": [], "data": []})
+
+        # 4. 分段计算专注度
+        max_frame = max(d[0] for d in track_data)
+        if max_frame == 0:
+            return jsonify({"labels": [], "data": []})
+
+        segment_size = max_frame / num_segments
+        labels = []
+        data = []
+
+        for i in range(num_segments):
+            start_f = int(i * segment_size)
+            end_f = int((i + 1) * segment_size)
+            focus_cnt = 0
+            total_cnt = 0
+            for fid, beh in track_data:
+                if start_f <= fid < end_f:
+                    total_cnt += 1
+                    if beh in focus_labels:
+                        focus_cnt += 1
+            rate = round(100 * focus_cnt / total_cnt) if total_cnt > 0 else 0
+            labels.append(f"{int(i * 100 / num_segments)}%")
+            data.append(rate)
+
+        return jsonify({"labels": labels, "data": data})
+
+    except Exception as e:
+        print("专注度趋势计算错误:", e)
+        return jsonify({"labels": [], "data": []})

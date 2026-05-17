@@ -12,6 +12,7 @@ from datetime import date
 import pymysql
 from flask import Blueprint, request, jsonify
 
+import shared
 from shared import minio_client, BUCKET_NAME, get_db_connection
 from utils import round0
 
@@ -178,9 +179,33 @@ def get_student_behavior():
             except:
                 continue
 
+        # 根据当前模型配置计算专注度
+        focus_rate = 100
+        config = shared.current_model_config
+        if config and total_behaviors:
+            labels_en = config["labels_en"]
+            labels_cn = config["labels_cn"]
+            focus_en = set(config["focus"])
+            focus_count = 0
+            distract_count = 0
+            for beh, cnt in total_behaviors.items():
+                if beh in labels_cn:
+                    idx = labels_cn.index(beh)
+                    en_label = labels_en[idx]
+                    if en_label in focus_en:
+                        focus_count += cnt
+                    else:
+                        distract_count += cnt
+                else:
+                    distract_count += cnt
+            total = focus_count + distract_count
+            if total > 0:
+                focus_rate = round(100 * focus_count / total)
+
         return jsonify({
             "face_id": face_id,
-            "behaviors": total_behaviors
+            "behaviors": total_behaviors,
+            "focus_rate": focus_rate
         })
 
     except Exception as e:

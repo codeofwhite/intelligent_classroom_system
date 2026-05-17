@@ -33,10 +33,10 @@
       <h3>🎓 个人行为分析</h3>
 
       <div class="behavior">
-        <div><label>正常坐姿：</label><span>{{ reportData.normal || 0 }}</span></div>
-        <div><label>举手次数：</label><span>{{ reportData.raised_hand || 0 }}</span></div>
-        <div><label>低头次数：</label><span>{{ reportData.looking_down || 0 }}</span></div>
-        <div><label>专注度：</label><span>{{ focusRate }}%</span></div>
+        <div v-for="(cnt, label) in reportData.behaviors" :key="label">
+          <label>{{ label }}：</label><span>{{ cnt }}</span>
+        </div>
+        <div><label>专注度：</label><span>{{ reportData.focus_rate ?? focusRate }}%</span></div>
       </div>
 
       <div class="edit-section">
@@ -150,9 +150,12 @@ const selectStudent = async (stu) => {
 
     const b = reportRes.data.behaviors || {}
     reportData.value = {
-      normal: b['正常坐姿'] || 0,
+      behaviors: b,
+      focus_rate: reportRes.data.focus_rate ?? null,
+      // 保留旧字段用于 AI 分析等兼容
+      normal: b['正常坐姿'] || b['看书'] || 0,
       raised_hand: b['举手'] || 0,
-      looking_down: b['低头'] || 0
+      looking_down: b['低头'] || b['低头做其他事情'] || 0
     }
 
     // 🔥 加载该学生历史报告
