@@ -11,7 +11,7 @@
 from flask import Flask, Response, jsonify, request
 from flask_cors import CORS
 
-from face_db import load_face_database, get_sign_logs, load_face_database_from_minio
+from face_db import load_face_database, get_sign_logs, clear_sign_logs, load_face_database_from_minio
 from video_stream import gen_frames
 
 app = Flask(__name__)
@@ -28,6 +28,16 @@ def video_feed():
     """实时视频流（MJPEG）"""
     return Response(gen_frames(),
                     mimetype='multipart/x-mixed-replace; boundary=frame')
+
+
+@app.route('/start_sign', methods=['POST'])
+def start_sign():
+    """开始新一轮签到：清除旧记录"""
+    try:
+        clear_sign_logs()
+        return jsonify({"status": "ok", "msg": "签到记录已清除，开始新签到"})
+    except Exception as e:
+        return jsonify({"status": "error", "msg": str(e)}), 500
 
 
 @app.route('/get_sign_log')

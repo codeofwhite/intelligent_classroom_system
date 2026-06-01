@@ -14,7 +14,7 @@
       </div>
     </div>
 
-    <!-- 控制栏 -->
+      <!-- 控制栏 -->
     <div class="control-bar">
       <button class="btn-start" @click="startRecord" :disabled="recording">
         {{ recording ? '录制中...' : '▶️ 开始录制 & 分析' }}
@@ -22,6 +22,17 @@
       <button class="btn-stop" @click="stopRecord" :disabled="!recording">
         ⏹ 停止并保存
       </button>
+
+      <!-- 课程表选择器 -->
+      <div class="schedule-picker">
+        <label>课程：</label>
+        <select v-model="selectedScheduleIdx" :disabled="recording" @change="onScheduleChange">
+          <option value="">-- 选择课程（可选） --</option>
+          <option v-for="(s, idx) in scheduleList" :key="idx" :value="idx">
+            {{ weekDayMap[s.week_day] }} 第{{ s.section }}节 · {{ s.class_name }} · {{ s.course_name }}
+          </option>
+        </select>
+      </div>
 
       <div class="model-select">
         <label>模型：</label>
@@ -131,6 +142,33 @@ const logContainer = ref(null)
 const className = ref('')
 const classCode = ref('')
 const teacherCode = ref('')
+const lessonSection = ref('实时课堂')
+const currentCourseName = ref('')
+
+// 课程表相关
+const scheduleList = ref([])
+const selectedScheduleIdx = ref('')
+const weekDayMap = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+
+const onScheduleChange = () => {
+  if (selectedScheduleIdx.value === '') {
+    lessonSection.value = '实时课堂'
+    currentCourseName.value = ''
+    return
+  }
+  const s = scheduleList.value[selectedScheduleIdx.value]
+  if (!s) return
+  lessonSection.value = `第${s.section}节`
+  currentCourseName.value = s.course_name
+  // 更新班级
+  if (s.class_name) {
+    className.value = s.class_name
+    // 找 class_code
+    if (s.class_code) {
+      classCode.value = s.class_code
+    }
+  }
+}
 
 const videoFeedUrl = ref('http://localhost:5002/video_feed')
 
@@ -195,7 +233,8 @@ async function startRecord() {
     await axios.post('http://localhost:5002/start_record', {
       teacher_code: teacherCode.value || 'T2025001',
       class_code: classCode.value || 1,
-      lesson_section: '实时课堂'
+      lesson_section: lessonSection.value || '实时课堂',
+      course_name: currentCourseName.value || ''
     })
     recording.value = true
     recordDuration.value = 0
@@ -214,7 +253,8 @@ async function stopRecord() {
     await axios.post('http://localhost:5002/stop_record', {
       teacher_code: teacherCode.value || 'T2025001',
       class_code: classCode.value || 1,
-      lesson_section: '实时课堂'
+      lesson_section: lessonSection.value || '实时课堂',
+      course_name: currentCourseName.value || ''
     })
     recording.value = false
 
@@ -248,6 +288,13 @@ onMounted(() => {
   const user = JSON.parse(localStorage.getItem('terminalUser'))
   if (user) {
     teacherCode.value = user.teacher_code || ''
+    // 加载课程表
+    axios.post('http://localhost:5002/api/teacher/course_schedule', {
+      teacher_code: user.teacher_code || 'T2025001'
+    }).then(({ data }) => {
+      scheduleList.value = data.list || []
+    }).catch(() => {})
+
     // 加载班级信息
     axios.post('http://localhost:5001/teacher-class', { user_code: user.user_code })
       .then(({ data }) => {
@@ -373,8 +420,29 @@ onUnmounted(() => {
 .btn-stop:disabled { opacity: 0.5; cursor: not-allowed; }
 .btn-stop:not(:disabled):hover { background: #b91c1c; }
 
+.schedule-picker {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  color: #888;
+}
+
+.schedule-picker select {
+  background: #1a1a1a;
+  border: 1px solid #333;
+  color: #4ade80;
+  padding: 6px 10px;
+  border-radius: 4px;
+  min-width: 260px;
+  font-size: 12px;
+}
+
+.schedule-picker label {
+  white-space: nowrap;
+}
+
 .model-select {
-  margin-left: auto;
   display: flex;
   align-items: center;
   gap: 8px;

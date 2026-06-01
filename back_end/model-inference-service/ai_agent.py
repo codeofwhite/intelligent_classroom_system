@@ -16,7 +16,7 @@ dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
 MINIO_CLIENT = Minio(
     os.getenv("MINIO_ENDPOINT", "localhost:9000"),
     access_key=os.getenv("MINIO_ACCESS_KEY", "admin"),
-    secret_key=os.getenv("MINIO_SECRET_KEY", ""),
+    secret_key=os.getenv("MINIO_SECRET_KEY", "password123"),
     secure=False
 )
 BUCKET_NAME = "video-bucket"

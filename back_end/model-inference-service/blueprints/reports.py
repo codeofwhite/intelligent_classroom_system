@@ -263,18 +263,50 @@ def delete_report():
 @reports_bp.route("/api/report/save", methods=["POST"])
 def save_report():
     d = request.json
+    report_id = d.get("id")
+
     db_tmp = get_db_connection()
     cursor = db_tmp.cursor()
-    cursor.execute("""
-        INSERT INTO student_reports
-        (student_code, class_code, lesson_time, normal_posture, raised_hand, looking_down, focus_rate, ai_comment, teacher_score, teacher_comment)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-    """, (
-        d["student_code"],
-        d["class_code"], d["lesson_time"],
-        d["normal_posture"], d["raised_hand"], d["looking_down"], d["focus_rate"],
-        d["ai_comment"], d["teacher_score"], d["teacher_comment"]
-    ))
+
+    if report_id:
+        # 更新已有报告（老师添加评分/评语）
+        cursor.execute("""
+            UPDATE student_reports SET
+                ai_comment=%s, teacher_score=%s, teacher_comment=%s
+            WHERE id=%s
+        """, (
+            d.get("ai_comment"),
+            d.get("teacher_score"),
+            d.get("teacher_comment"),
+            report_id
+        ))
+    else:
+        # 插入新报告 - 处理 lesson_time 格式
+        lesson_time = d["lesson_time"]
+        try:
+            # 尝试解析各种日期格式
+            from email.utils import parsedate_to_datetime
+            if isinstance(lesson_time, str):
+                if 'GMT' in lesson_time or ',' in lesson_time:
+                    # RFC 2822 格式: "Fri, 22 May 2026 08:53:56 GMT"
+                    lesson_time = parsedate_to_datetime(lesson_time).strftime('%Y-%m-%d %H:%M:%S')
+                elif 'T' in lesson_time:
+                    # ISO 格式: "2026-05-22T08:53:56"
+                    lesson_time = lesson_time.replace('T', ' ').split('.')[0].split('Z')[0]
+        except Exception:
+            pass
+
+        cursor.execute("""
+            INSERT INTO student_reports
+            (student_code, class_code, lesson_time, normal_posture, raised_hand, looking_down, focus_rate, ai_comment, teacher_score, teacher_comment)
+            VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
+        """, (
+            d["student_code"],
+            d["class_code"], lesson_time,
+            d["normal_posture"], d["raised_hand"], d["looking_down"], d["focus_rate"],
+            d["ai_comment"], d["teacher_score"], d["teacher_comment"]
+        ))
+
     db_tmp.commit()
     cursor.close()
     db_tmp.close()
@@ -320,6 +352,29 @@ def report_list():
     cursor.close()
     db_tmp.close()
     return jsonify({"list": rows})
+
+
+@reports_bp.route("/api/report/list_by_class", methods=["GET"])
+def report_list_by_class():
+    """按班级获取所有学生报告（用于教师端按课堂分组查看）"""
+    class_code = request.args.get("class_code")
+    if not class_code:
+        return jsonify({"list": []})
+    try:
+        db_tmp = get_db_connection()
+        cursor = db_tmp.cursor()
+        cursor.execute("""
+            SELECT * FROM student_reports
+            WHERE class_code=%s
+            ORDER BY lesson_time DESC
+        """, (class_code,))
+        columns = [desc[0] for desc in cursor.description]
+        rows = [dict(zip(columns, row)) for row in cursor.fetchall()]
+        cursor.close()
+        db_tmp.close()
+        return jsonify({"list": rows})
+    except Exception as e:
+        return jsonify({"list": []})
 
 
 @reports_bp.route("/api/report/focus_trend", methods=["GET"])

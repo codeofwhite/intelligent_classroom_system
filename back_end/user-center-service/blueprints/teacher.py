@@ -32,7 +32,7 @@ def teacher_class():
             class_name = teacher['class_name']
 
             sql = """
-                SELECT u.name, s.gender
+                SELECT u.name, s.gender, s.age
                 FROM students s
                 JOIN users u ON s.user_code = u.user_code
                 WHERE s.class_code = %s

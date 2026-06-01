@@ -30,8 +30,18 @@
       <h3>📂 上传课堂视频进行分析</h3>
       <div class="upload-form">
 
+        <!-- 从课程表选择（自动填充班级+节次） -->
+        <select v-model="selectedScheduleIdx" class="select-input schedule-select" @change="onScheduleChange">
+          <option value="">-- 从课程表选择（推荐） --</option>
+          <option v-for="(s, idx) in scheduleList" :key="idx" :value="idx">
+            {{ weekDayMap[s.week_day] }} 第{{ s.section }}节 · {{ s.class_name }} · {{ s.course_name }} · {{ s.classroom }}
+          </option>
+        </select>
+
+        <span class="or-divider">或</span>
+
         <select v-model="classId" class="select-input">
-          <option value="">-- 选择班级 --</option>
+          <option value="">-- 手动选择班级 --</option>
           <option v-for="c in classList" :key="c.class_code" :value="c.class_code">
             {{ c.class_name }}
           </option>
@@ -39,6 +49,10 @@
 
         <input v-model="lessonSection" class="select-input" placeholder="节次：如 第1节" />
         <input v-model="recordDate" type="date" class="select-input" />
+
+        <div v-if="selectedScheduleIdx !== ''" class="schedule-info">
+          📅 {{ scheduleList[selectedScheduleIdx]?.course_name }} · {{ scheduleList[selectedScheduleIdx]?.classroom }}
+        </div>
 
         <input type="file" ref="videoInput" @change="onFileChange" accept="video/*" />
 
@@ -136,6 +150,44 @@ const reportList = ref([])
 const openGroups = ref({})
 
 const classList = ref([])
+
+// 课程表相关
+const scheduleList = ref([])
+const selectedScheduleIdx = ref('')
+const weekDayMap = { 1: '周一', 2: '周二', 3: '周三', 4: '周四', 5: '周五', 6: '周六', 7: '周日' }
+
+// 从课程表选择 → 自动填充班级、节次
+const onScheduleChange = () => {
+  if (selectedScheduleIdx.value === '') return
+  const s = scheduleList.value[selectedScheduleIdx.value]
+  if (!s) return
+  // 找到对应 class_code
+  const cls = classList.value.find(c => c.class_name === s.class_name)
+  if (cls) {
+    classId.value = cls.class_code
+  }
+  lessonSection.value = `第${s.section}节`
+  // 如果没选日期，自动填今天
+  if (!recordDate.value) {
+    const d = new Date()
+    recordDate.value = d.toISOString().split('T')[0]
+  }
+}
+
+// 加载教师课程表
+const loadSchedule = async () => {
+  try {
+    const user = JSON.parse(localStorage.getItem('userInfo') || '{}')
+    const tc = user.teacher_code || 'T2025001'
+    teacherCode.value = tc
+    const { data } = await axios.post('http://localhost:5002/api/teacher/course_schedule', {
+      teacher_code: tc
+    })
+    scheduleList.value = data.list || []
+  } catch (err) {
+    console.error('加载课程表失败', err)
+  }
+}
 
 // 实时预览
 const showLive = ref(false)
@@ -275,7 +327,8 @@ async function switchModel() {
 onMounted(() => {
   fetchModels()
   fetchTeacherReports()
-  loadClassList() // ✅ 加这行
+  loadClassList()
+  loadSchedule()
 })
 </script>
 
@@ -381,6 +434,28 @@ td {
   border: 1px solid #91d5ff;
   border-radius: 6px;
   cursor: pointer;
+}
+
+.schedule-select {
+  min-width: 320px;
+  font-size: 13px;
+}
+
+.or-divider {
+  color: #999;
+  font-size: 13px;
+  display: flex;
+  align-items: center;
+}
+
+.schedule-info {
+  width: 100%;
+  background: #f0f9ff;
+  border: 1px solid #bae0ff;
+  border-radius: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  color: #1677ff;
 }
 
 /* 🔥 删除按钮样式 */

@@ -120,6 +120,17 @@ def sign_in(name):
         return True
 
 
+def clear_sign_logs():
+    """清除签到日志和已签到集合（每次开始新签到时调用）"""
+    global signed_set
+    with lock:
+        signed_set = set()
+        # 清空日志文件
+        with open(SIGN_LOG, 'w', encoding='utf-8') as f:
+            f.truncate(0)
+        print("🧹 签到记录已清除，准备新一轮签到")
+
+
 def get_sign_logs():
     """读取签到日志"""
     try:

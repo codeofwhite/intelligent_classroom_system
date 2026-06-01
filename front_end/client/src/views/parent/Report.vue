@@ -19,29 +19,64 @@
       </button>
     </div>
 
-    <!-- 报告列表 -->
-    <div class="list-section" v-if="reportList.length > 0">
-      <h3>📋 课程报告记录</h3>
-      <div
-        class="item"
-        v-for="item in reportList"
-        :key="item.id"
-        @click="openDetail(item)"
-      >
-        <div class="left">
-          <div class="subject">课堂行为报告</div>
-          <div class="date">{{ item.lesson_time }}</div>
-        </div>
-        <div class="right">
-          <div class="score">{{ item.focus_rate }}%</div>
-          <div class="arrow">></div>
+    <!-- 数据概览（选中孩子后显示） -->
+    <div class="overview-card" v-if="selectedCode && reportList.length > 0">
+      <div class="overview-item">
+        <span>总报告</span>
+        <strong>{{ reportList.length }}</strong>
+      </div>
+      <div class="overview-item">
+        <span>平均专注</span>
+        <strong>{{ avgFocus }}%</strong>
+      </div>
+      <div class="overview-item">
+        <span>评价</span>
+        <strong>{{ levelText }}</strong>
+      </div>
+    </div>
+
+    <!-- 筛选栏 -->
+    <div class="filter-bar" v-if="selectedCode && reportList.length > 0">
+      <div class="filter-tabs">
+        <button v-for="f in filters" :key="f.key" class="filter-tab"
+          :class="{ active: currentFilter === f.key }" @click="currentFilter = f.key">
+          {{ f.label }}
+        </button>
+      </div>
+      <span class="filter-count">{{ filteredReports.length }} 条</span>
+    </div>
+
+    <!-- 按月分组的报告列表 -->
+    <div v-for="group in monthGroups" :key="group.key" class="month-group" v-if="selectedCode">
+      <div class="month-header" @click="group.open = !group.open">
+        <span class="month-title">📅 {{ group.label }}</span>
+        <span class="month-meta">{{ group.items.length }} 节 · 均 {{ group.avgFocus }}%</span>
+        <span class="expand-arrow">{{ group.open ? '▼' : '▶' }}</span>
+      </div>
+      <div v-show="group.open" class="month-body">
+        <div class="report-item" v-for="item in group.items" :key="item.id" @click="openDetail(item)">
+          <div class="item-left">
+            <div class="item-time">{{ formatTime(item.lesson_time) }}</div>
+            <div class="item-stats">
+              坐姿 {{ item.normal_posture }} · 举手 {{ item.raised_hand }} · 低头 {{ item.looking_down }}
+            </div>
+          </div>
+          <div class="item-right">
+            <div class="focus-badge" :class="focusBadgeClass(item.focus_rate)">
+              {{ item.focus_rate }}%
+            </div>
+            <span class="arrow">›</span>
+          </div>
         </div>
       </div>
     </div>
 
     <!-- 空状态 -->
-    <div class="empty-tip" v-else>
+    <div class="empty-tip" v-if="!selectedCode">
       请选择孩子查看课堂报告
+    </div>
+    <div class="empty-tip" v-else-if="reportList.length === 0">
+      暂无课堂报告数据
     </div>
 
     <!-- 详情弹窗 -->
@@ -62,7 +97,14 @@
             <span class="purple">{{ currentDetail.focus_rate }}%</span>
           </div>
 
-          <div class="stats">
+          <!-- 行为统计（自适应显示） -->
+          <div class="stats" v-if="currentDetail.behaviors_json">
+            <div v-for="(cnt, label) in parseBehaviors(currentDetail.behaviors_json)" :key="label">
+              <label>{{ label }}</label>
+              <span>{{ cnt }}</span>
+            </div>
+          </div>
+          <div class="stats" v-else>
             <div>
               <label>正常坐姿</label>
               <span>{{ currentDetail.normal_posture }}</span>
@@ -95,7 +137,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted } from 'vue'
 import axios from 'axios'
 
 let parentUser = null
@@ -107,259 +149,184 @@ const studentList = ref([])
 const selectedCode = ref(null)
 const reportList = ref([])
 const currentDetail = ref(null)
+const currentFilter = ref('all')
+
+const filters = [
+  { key: 'all', label: '全部' },
+  { key: 'high', label: '优秀 ≥85' },
+  { key: 'medium', label: '良好 70-84' },
+  { key: 'low', label: '需关注 <70' }
+]
+
+const avgFocus = computed(() => {
+  if (reportList.value.length === 0) return 0
+  return Math.round(reportList.value.reduce((t, i) => t + (i.focus_rate || 0), 0) / reportList.value.length)
+})
+const levelText = computed(() => {
+  if (avgFocus.value >= 90) return '优秀'
+  if (avgFocus.value >= 80) return '良好'
+  if (avgFocus.value >= 70) return '一般'
+  return '需努力'
+})
+
+const filteredReports = computed(() => {
+  if (currentFilter.value === 'all') return reportList.value
+  return reportList.value.filter(r => {
+    const f = r.focus_rate || 0
+    if (currentFilter.value === 'high') return f >= 85
+    if (currentFilter.value === 'medium') return f >= 70 && f < 85
+    return f < 70
+  })
+})
+
+const monthGroups = computed(() => {
+  const groups = {}
+  filteredReports.value.forEach(r => {
+    const d = new Date(r.lesson_time)
+    const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`
+    if (!groups[key]) {
+      groups[key] = { key, label: `${d.getFullYear()}年${d.getMonth() + 1}月`, items: [], open: true, avgFocus: 0 }
+    }
+    groups[key].items.push(r)
+  })
+  Object.values(groups).forEach(g => {
+    g.avgFocus = Math.round(g.items.reduce((t, i) => t + (i.focus_rate || 0), 0) / g.items.length)
+  })
+  return Object.values(groups).sort((a, b) => b.key.localeCompare(a.key))
+})
+
+const focusBadgeClass = (rate) => rate >= 85 ? 'good' : rate >= 70 ? 'medium' : 'bad'
+const formatTime = (t) => {
+  if (!t) return ''
+  const d = new Date(t)
+  return `${d.getMonth()+1}月${d.getDate()}日 周${'日一二三四五六'[d.getDay()]} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`
+}
+const parseBehaviors = (s) => { try { return JSON.parse(s) } catch { return {} } }
 
 onMounted(async () => {
-  if (!parentUser || parentUser.role !== 'parent') {
-    alert('请以家长身份登录')
-    return
-  }
-
+  if (!parentUser || parentUser.role !== 'parent') { alert('请以家长身份登录'); return }
   try {
-    const res = await axios.post('http://localhost:5001/parent-children', {
-      user_code: parentUser.user_code
-    })
+    const res = await axios.post('http://localhost:5001/parent-children', { user_code: parentUser.user_code })
     studentList.value = res.data.children
-  } catch (err) {
-    console.error(err)
-    alert('获取孩子信息失败')
-  }
+  } catch (err) { console.error(err) }
 })
 
 async function loadStudentReport(student_code) {
   selectedCode.value = student_code
+  currentFilter.value = 'all'
   try {
-    const res = await axios.get('http://localhost:5002/api/student/my-reports', {
-      params: { student_code }
-    })
+    const res = await axios.get('http://localhost:5002/api/student/my-reports', { params: { student_code } })
     reportList.value = res.data.list || []
-  } catch (e) {
-    alert("获取报告失败")
-    console.error(e)
-  }
+  } catch (e) { console.error(e) }
 }
 
-const openDetail = (item) => {
-  currentDetail.value = item
-}
-
-const closeDetail = () => {
-  currentDetail.value = null
-}
+const openDetail = (item) => { currentDetail.value = item }
+const closeDetail = () => { currentDetail.value = null }
 </script>
 
 <style scoped>
 .report-page {
-  padding: 24px;
+  padding: 20px;
   background: linear-gradient(to bottom, #f9faff, #f1f5ff);
   min-height: 100vh;
   font-family: "PingFang SC", "Microsoft YaHei", sans-serif;
 }
+.header { text-align: center; margin-bottom: 20px; }
+.header h2 { font-size: 22px; font-weight: 600; margin: 0 0 6px 0; color: #2c3e50; }
+.header p { font-size: 13px; color: #7f8c8d; margin: 0; }
 
-/* 头部 */
-.header {
-  text-align: center;
-  margin-bottom: 24px;
-}
-.header h2 {
-  font-size: 24px;
-  font-weight: 600;
-  margin: 0 0 8px 0;
-  color: #2c3e50;
-}
-.header p {
-  font-size: 14px;
-  color: #7f8c8d;
-  margin: 0;
-}
-
-/* 选择孩子 */
-.student-selector {
-  display: flex;
-  gap: 12px;
-  justify-content: center;
-  margin-bottom: 26px;
-  flex-wrap: wrap;
-}
+.student-selector { display: flex; gap: 10px; justify-content: center; margin-bottom: 18px; flex-wrap: wrap; }
 .student-btn {
-  padding: 12px 20px;
-  border: 1px solid #e2e8ff;
-  background: #fff;
-  border-radius: 12px;
-  cursor: pointer;
-  font-size: 14px;
-  transition: all 0.2s;
+  padding: 10px 18px; border: 1px solid #e2e8ff; background: #fff;
+  border-radius: 12px; cursor: pointer; font-size: 14px; transition: all 0.2s;
 }
 .student-btn.active {
-  background: linear-gradient(90deg, #7c5fff, #9b77ff);
-  color: white;
-  border-color: #7c5fff;
-  transform: scale(1.03);
+  background: linear-gradient(90deg, #7c5fff, #9b77ff); color: white;
+  border-color: #7c5fff; transform: scale(1.03);
 }
 
-/* 报告列表 */
-.list-section h3 {
-  font-size: 17px;
-  font-weight: 600;
-  margin: 0 0 14px 4px;
-  color: #2c3e50;
+/* 概览卡片 */
+.overview-card {
+  background: linear-gradient(135deg, #7c5fff, #9b77ff);
+  border-radius: 16px; padding: 16px; margin-bottom: 16px;
+  display: flex; justify-content: space-around; text-align: center; color: white;
 }
-.item {
-  background: #ffffff;
-  border-radius: 16px;
-  padding: 18px 16px;
-  margin-bottom: 12px;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
-  transition: all 0.25s ease;
-  border: 1px solid rgba(255,255,255,0.6);
+.overview-item { display: flex; flex-direction: column; gap: 4px; }
+.overview-item span { font-size: 12px; opacity: 0.85; }
+.overview-item strong { font-size: 18px; }
+
+/* 筛选 */
+.filter-bar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; }
+.filter-tabs { display: flex; gap: 6px; }
+.filter-tab {
+  padding: 6px 12px; border: 1px solid #e0e0e0; border-radius: 16px;
+  background: #fff; font-size: 12px; cursor: pointer; color: #666; transition: all 0.2s;
 }
-.item:active {
-  transform: scale(0.97);
+.filter-tab.active { background: #7c5fff; color: #fff; border-color: #7c5fff; }
+.filter-count { font-size: 12px; color: #999; }
+
+/* 月度分组 */
+.month-group { margin-bottom: 12px; border-radius: 14px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.04); }
+.month-header {
+  background: #fff; padding: 14px 16px; display: flex; align-items: center;
+  gap: 10px; cursor: pointer; border-bottom: 1px solid #f0f0f0;
 }
-.left .subject {
-  font-weight: 600;
-  font-size: 16px;
-  margin-bottom: 6px;
-  color: #2c3e50;
+.month-title { font-weight: 600; font-size: 14px; color: #2c3e50; }
+.month-meta { flex: 1; font-size: 12px; color: #999; text-align: right; }
+.expand-arrow { font-size: 11px; color: #bbb; }
+.month-body { background: #fafbff; }
+
+.report-item {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: 12px 16px; border-bottom: 1px solid #f0f2f5; cursor: pointer; transition: background 0.2s;
 }
-.left .date {
-  font-size: 13px;
-  color: #7f8c8d;
-}
-.right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-.score {
-  font-size: 18px;
-  font-weight: bold;
-  color: #7c5fff;
-}
-.arrow {
-  color: #bdc3c7;
-  font-size: 16px;
-}
+.report-item:hover { background: #f0f5ff; }
+.report-item:last-child { border-bottom: none; }
+.item-time { font-size: 14px; font-weight: 500; color: #2c3e50; margin-bottom: 3px; }
+.item-stats { font-size: 12px; color: #999; }
+.item-right { display: flex; align-items: center; gap: 8px; }
+.focus-badge { padding: 4px 10px; border-radius: 12px; font-size: 14px; font-weight: 600; }
+.focus-badge.good { background: #e6ffed; color: #00b42a; }
+.focus-badge.medium { background: #fff7e6; color: #fa8c16; }
+.focus-badge.bad { background: #fff2f0; color: #ff4d4f; }
+.arrow { color: #ccc; font-size: 18px; }
+
+.empty-tip { text-align: center; color: #999; padding: 60px 20px; font-size: 15px; }
 
 /* 弹窗 */
 .modal {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.45);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 999;
-  backdrop-filter: blur(4px);
+  position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+  display: flex; align-items: center; justify-content: center; z-index: 999; backdrop-filter: blur(4px);
 }
 .modal-content {
-  background: #fff;
-  width: 90%;
-  max-width: 420px;
-  border-radius: 22px;
-  max-height: 85vh;
-  overflow-y: auto;
-  box-shadow: 0 20px 40px rgba(0, 0, 0, 0.2);
-  animation: modalUp 0.3s ease;
+  background: #fff; width: 90%; max-width: 420px; border-radius: 20px;
+  max-height: 85vh; overflow-y: auto; box-shadow: 0 16px 32px rgba(0,0,0,0.2); animation: modalUp 0.3s ease;
 }
-@keyframes modalUp {
-  from { transform: translateY(40px); opacity: 0; }
-  to { transform: translateY(0); opacity: 1; }
-}
-
+@keyframes modalUp { from { transform: translateY(30px); opacity: 0; } to { transform: translateY(0); opacity: 1; } }
 .modal-header {
-  padding: 20px;
-  border-bottom: 1px solid #f1f1f1;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
+  padding: 18px 20px; border-bottom: 1px solid #f1f1f1;
+  display: flex; justify-content: space-between; align-items: center;
 }
-.modal-header h3 {
-  margin: 0;
-  font-size: 18px;
-  font-weight: 600;
-  color: #2c3e50;
-}
+.modal-header h3 { margin: 0; font-size: 17px; font-weight: 600; color: #2c3e50; }
 .modal-header button {
-  background: #f5f6fa;
-  border: none;
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  font-size: 18px;
-  cursor: pointer;
-  color: #7f8c8d;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: #f5f6fa; border: none; width: 30px; height: 30px; border-radius: 50%;
+  font-size: 16px; cursor: pointer; color: #7f8c8d; display: flex; align-items: center; justify-content: center;
 }
-
-.detail-body {
-  padding: 24px;
-}
-.info-row {
-  display: flex;
-  justify-content: space-between;
-  padding: 12px 0;
-  font-size: 15px;
-  color: #2c3e50;
-}
-
-/* 统计卡片 */
-.stats {
-  background: #f8f9fd;
-  border-radius: 14px;
-  padding: 18px 14px;
-  display: flex;
-  justify-content: space-around;
-  margin: 20px 0;
-}
-.stats div {
-  text-align: center;
-}
-.stats label {
-  font-size: 13px;
-  color: #7f8c8d;
-  display: block;
-  margin-bottom: 6px;
-}
-.stats span {
-  font-weight: 600;
-  font-size: 18px;
-  color: #2c3e50;
-}
+.detail-body { padding: 20px; }
+.info-row { display: flex; justify-content: space-between; padding: 10px 0; font-size: 14px; color: #2c3e50; }
+.purple { color: #7c5fff !important; font-weight: 600; }
 .red { color: #ff4757 !important; }
-.purple { color: #7c5fff !important; }
-
-/* 建议 & 评语 */
-.suggest, .comment {
-  margin-bottom: 20px;
+.stats {
+  background: #f8f9fd; border-radius: 12px; padding: 14px;
+  display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 16px 0;
 }
-.suggest h4, .comment h4 {
-  font-size: 16px;
-  font-weight: 600;
-  margin: 0 0 10px 0;
-  color: #2c3e50;
-}
+.stats div { text-align: center; }
+.stats label { font-size: 11px; color: #999; display: block; margin-bottom: 4px; }
+.stats span { font-weight: 600; font-size: 15px; color: #2c3e50; }
+.suggest, .comment { margin-bottom: 16px; }
+.suggest h4, .comment h4 { font-size: 14px; font-weight: 600; margin: 0 0 8px 0; color: #2c3e50; }
 .suggest p, .comment p {
-  background: #f8f9fd;
-  padding: 16px;
-  border-radius: 14px;
-  font-size: 14px;
-  line-height: 1.6;
-  margin: 0;
-  color: #34495e;
-}
-
-.empty-tip {
-  text-align: center;
-  color: #999;
-  padding: 60px 20px;
-  font-size: 15px;
+  background: #f8f9fd; padding: 14px; border-radius: 12px;
+  font-size: 13px; line-height: 1.6; margin: 0; color: #34495e;
 }
 </style>

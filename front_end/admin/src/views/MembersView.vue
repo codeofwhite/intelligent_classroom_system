@@ -9,6 +9,25 @@
       </div>
 
       <div class="table-box">
+        <!-- 搜索和排序工具栏 -->
+        <div class="toolbar">
+          <input
+            v-model="searchQuery"
+            type="text"
+            placeholder="🔍 搜索学生姓名或学号..."
+            class="search-input"
+          />
+          <div class="toolbar-actions">
+            <button class="sort-btn" @click="toggleSortOrder">
+              {{ sortOrder === 'asc' ? '⬆️ 按姓名升序' : '⬇️ 按姓名降序' }}
+            </button>
+            <span class="filter-count">
+              显示 {{ filteredStudents.length }} / {{ studentList.length }}
+            </span>
+          </div>
+        </div>
+
+        <div class="table-scroll">
         <table class="member-table">
           <thead>
             <tr>
@@ -23,8 +42,8 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="(s, index) in studentList" :key="s.student_code">
-              <td>{{ index + 1 }}</td>
+            <tr v-for="(s, index) in pagedStudents" :key="s.student_code">
+              <td>{{ (currentPage - 1) * pageSize + index + 1 }}</td>
               <td class="student-name">{{ s.student_name }}</td>
               <td>{{ s.student_code }}</td>
               <td>{{ s.gender }}</td>
@@ -45,6 +64,15 @@
 
         <div class="empty" v-if="studentList.length === 0">
           🧑‍🎓 暂无学生数据
+        </div>
+
+        <!-- 分页 -->
+        <div class="pagination" v-if="filteredStudents.length > pageSize">
+          <button :disabled="currentPage <= 1" @click="currentPage--">‹ 上一页</button>
+          <span>{{ currentPage }} / {{ totalPages }}</span>
+          <button :disabled="currentPage >= totalPages" @click="currentPage++">下一页 ›</button>
+        </div>
+
         </div>
       </div>
     </div>
@@ -97,7 +125,7 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import axios from 'axios'
 
 const MODEL_SERVICE = 'http://localhost:5002'
@@ -107,6 +135,46 @@ const className = ref('')
 const classCode = ref('')
 const studentList = ref([])
 const faceCountMap = ref({})
+
+// 搜索和排序
+const searchQuery = ref('')
+const sortOrder = ref('asc')
+const currentPage = ref(1)
+const pageSize = 15
+
+// 搜索过滤 + 排序
+const filteredStudents = computed(() => {
+  const keyword = searchQuery.value.trim().toLowerCase()
+  let list = studentList.value
+  if (keyword) {
+    list = list.filter(s =>
+      (s.student_name && s.student_name.toLowerCase().includes(keyword)) ||
+      (s.student_code && s.student_code.toLowerCase().includes(keyword))
+    )
+  }
+  // 排序
+  list = [...list].sort((a, b) => {
+    const nameA = a.student_name || ''
+    const nameB = b.student_name || ''
+    return sortOrder.value === 'asc'
+      ? nameA.localeCompare(nameB, 'zh')
+      : nameB.localeCompare(nameA, 'zh')
+  })
+  return list
+})
+
+const totalPages = computed(() => Math.max(1, Math.ceil(filteredStudents.value.length / pageSize)))
+const pagedStudents = computed(() => {
+  const start = (currentPage.value - 1) * pageSize
+  return filteredStudents.value.slice(start, start + pageSize)
+})
+
+const toggleSortOrder = () => {
+  sortOrder.value = sortOrder.value === 'asc' ? 'desc' : 'asc'
+  currentPage.value = 1
+}
+
+watch(searchQuery, () => { currentPage.value = 1 })
 
 // 人脸管理对话框
 const faceDialogVisible = ref(false)
@@ -275,6 +343,63 @@ onMounted(() => loadData())
   padding: 16px 24px 24px;
 }
 
+/* 搜索工具栏 */
+.toolbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.search-input {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  outline: none;
+  transition: border-color 0.2s;
+}
+
+.search-input:focus {
+  border-color: #1677ff;
+  box-shadow: 0 0 0 2px rgba(22, 119, 255, 0.1);
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.sort-btn {
+  padding: 8px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  white-space: nowrap;
+  transition: all 0.2s;
+}
+
+.sort-btn:hover {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+.filter-count {
+  font-size: 12px;
+  color: #999;
+  white-space: nowrap;
+}
+
+/* 表格滚动容器 */
+.table-scroll {
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
 .member-table {
   width: 100%;
   border-collapse: collapse;
@@ -288,6 +413,9 @@ onMounted(() => loadData())
   color: #4e5969;
   background: #fafbfc;
   border-bottom: 1px solid #e5e6eb;
+  position: sticky;
+  top: 0;
+  z-index: 1;
 }
 
 .member-table tbody td {
@@ -342,6 +470,42 @@ onMounted(() => loadData())
   text-align: center;
   padding: 30px;
   color: #999;
+}
+
+/* 分页 */
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 16px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid #f0f0f0;
+}
+
+.pagination button {
+  padding: 6px 16px;
+  border: 1px solid #e0e0e0;
+  border-radius: 6px;
+  background: #fff;
+  cursor: pointer;
+  font-size: 13px;
+  transition: all 0.2s;
+}
+
+.pagination button:hover:not(:disabled) {
+  border-color: #1677ff;
+  color: #1677ff;
+}
+
+.pagination button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.pagination span {
+  font-size: 13px;
+  color: #666;
 }
 
 /* 人脸管理对话框 */

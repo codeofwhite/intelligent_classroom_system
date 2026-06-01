@@ -19,7 +19,20 @@
     <div class="main-content">
       <!-- 左侧：视频流 -->
       <div class="video-section">
-        <div class="video-frame">
+        <!-- 开始签到按钮 -->
+        <div class="start-sign-bar" v-if="!isSigning">
+          <button
+            class="start-sign-btn"
+            :disabled="!serviceUp"
+            @click="startSign"
+          >
+            🚀 开始签到
+          </button>
+          <p class="start-hint" v-if="!serviceUp">请等待服务上线后再开始签到</p>
+          <p class="start-hint" v-else>点击按钮开始新一轮签到，旧记录将被清除</p>
+        </div>
+
+        <div class="video-frame" v-show="isSigning">
           <img
             :src="videoFeedUrl"
             class="live-video"
@@ -36,7 +49,7 @@
         </div>
 
         <!-- 签到统计 -->
-        <div class="sign-stats">
+        <div class="sign-stats" v-if="isSigning">
           <div class="sign-stat-item">
             <span class="sign-stat-val">{{ signCount }}</span>
             <span class="sign-stat-label">已签到</span>
@@ -59,11 +72,14 @@
         <div class="record-card">
           <div class="record-header">
             <h3>📋 签到记录</h3>
-            <button class="refresh-btn" @click="fetchLogs">🔄 刷新</button>
+            <button class="refresh-btn" v-if="isSigning" @click="fetchLogs">🔄 刷新</button>
           </div>
 
           <div class="record-scroll" ref="logContainer">
-            <div v-if="logs.length === 0" class="record-empty">
+            <div v-if="!isSigning" class="record-empty">
+              请点击左侧"开始签到"按钮
+            </div>
+            <div v-else-if="logs.length === 0" class="record-empty">
               等待签到记录...
             </div>
             <div
@@ -81,7 +97,7 @@
         <!-- 快捷操作 -->
         <div class="action-bar">
           <p class="action-hint">
-            💡 签到说明：学生面对摄像头，系统自动识别并记录签到时间
+            💡 签到说明：点击"开始签到"后，学生面对摄像头，系统自动识别并记录签到时间
           </p>
         </div>
       </div>
@@ -101,6 +117,7 @@ const totalStudents = ref(0)
 const logContainer = ref(null)
 
 const logs = ref([])
+const isSigning = ref(false)
 
 // 签到人数（从日志中解析唯一姓名）
 const signCount = computed(() => {
@@ -131,6 +148,33 @@ watch(logs, () => {
 }, { deep: true })
 
 let pollTimer = null
+
+async function startSign() {
+  try {
+    await axios.post('http://localhost:5003/start_sign')
+  } catch {
+    // silent
+  }
+  logs.value = []
+  isSigning.value = true
+  startPolling()
+}
+
+function startPolling() {
+  stopPolling()
+  fetchLogs()
+  pollTimer = setInterval(() => {
+    checkService()
+    fetchLogs()
+  }, 2000)
+}
+
+function stopPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer)
+    pollTimer = null
+  }
+}
 
 async function fetchLogs() {
   try {
@@ -168,15 +212,14 @@ async function loadClassInfo() {
 onMounted(() => {
   loadClassInfo()
   checkService()
-  fetchLogs()
+  // 不自动开始签到，等待用户点击"开始签到"按钮
   pollTimer = setInterval(() => {
     checkService()
-    fetchLogs()
   }, 2000)
 })
 
 onUnmounted(() => {
-  if (pollTimer) clearInterval(pollTimer)
+  stopPolling()
 })
 </script>
 
@@ -269,6 +312,51 @@ onUnmounted(() => {
   display: flex;
   flex-direction: column;
   gap: 16px;
+}
+
+/* 开始签到按钮区 */
+.start-sign-bar {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  background: #111;
+  border: 2px dashed #2a4a2a;
+  border-radius: 8px;
+  aspect-ratio: 4/3;
+  gap: 16px;
+}
+
+.start-sign-btn {
+  background: linear-gradient(135deg, #1a4a1a, #2a6a2a);
+  border: 2px solid #4ade80;
+  color: #4ade80;
+  padding: 16px 40px;
+  border-radius: 8px;
+  font-size: 20px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: all 0.3s;
+  font-family: inherit;
+}
+
+.start-sign-btn:hover:not(:disabled) {
+  background: linear-gradient(135deg, #2a6a2a, #3a8a3a);
+  box-shadow: 0 0 20px rgba(74, 222, 128, 0.3);
+  transform: scale(1.05);
+}
+
+.start-sign-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+  border-color: #333;
+  color: #555;
+}
+
+.start-hint {
+  color: #555;
+  font-size: 12px;
+  margin: 0;
 }
 
 .video-frame {

@@ -118,6 +118,37 @@ def student_stats():
         """, (student_code,))
         semester = cursor.fetchone()
 
+        # 本周每日平均（用于计算最佳日和较上周变化）
+        cursor.execute("""
+            SELECT DAYOFWEEK(lesson_time) AS dow, IFNULL(AVG(focus_rate),0) AS avg
+            FROM student_reports
+            WHERE student_code=%s AND YEARWEEK(lesson_time)=YEARWEEK(NOW())
+            GROUP BY DAYOFWEEK(lesson_time)
+            ORDER BY avg DESC
+        """, (student_code,))
+        week_days = cursor.fetchall()
+        best_day_map = {1:'周日',2:'周一',3:'周二',4:'周三',5:'周四',6:'周五',7:'周六'}
+        best_day = best_day_map.get(week_days[0]['dow'], '--') if week_days else '--'
+
+        # 上周平均
+        cursor.execute("""
+            SELECT IFNULL(AVG(focus_rate),0) AS avg
+            FROM student_reports
+            WHERE student_code=%s AND YEARWEEK(lesson_time)=YEARWEEK(NOW())-1
+        """, (student_code,))
+        last_week = cursor.fetchone()
+        week_change = round0(week['avg']) - round0(last_week['avg']) if last_week else 0
+
+        # 上月平均（用于计算进步幅度）
+        cursor.execute("""
+            SELECT IFNULL(AVG(focus_rate),0) AS avg
+            FROM student_reports
+            WHERE student_code=%s AND MONTH(lesson_time)=MONTH(DATE_SUB(NOW(), INTERVAL 1 MONTH))
+              AND YEAR(lesson_time)=YEAR(DATE_SUB(NOW(), INTERVAL 1 MONTH))
+        """, (student_code,))
+        last_month = cursor.fetchone()
+        month_progress = round0(month['avg']) - round0(last_month['avg']) if last_month else 0
+
         cursor.close()
         db_tmp.close()
 
@@ -129,17 +160,17 @@ def student_stats():
             },
             "week": {
                 "avg": round0(week['avg']),
-                "up": 5,
-                "bestDay": "周四"
+                "up": max(0, week_change),
+                "bestDay": best_day
             },
             "month": {
                 "avg": round0(month['avg']),
-                "progress": 7,
+                "progress": max(0, month_progress),
                 "classCount": month['classCount']
             },
             "semester": {
                 "avg": round0(semester['avg']),
-                "level": "A · 优秀" if round0(semester['avg']) >= 85 else "B · 良好"
+                "level": "A · 优秀" if round0(semester['avg']) >= 85 else ("B · 良好" if round0(semester['avg']) >= 70 else "C · 一般")
             }
         })
     except Exception as e:

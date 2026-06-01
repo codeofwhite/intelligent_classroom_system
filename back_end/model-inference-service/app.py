@@ -15,6 +15,9 @@ API 按功能场景分为以下蓝图：
   - chat         聊天助手     （/api/chat/*）
   - schedule     课程表       （/api/teacher/course_schedule）
 """
+from dotenv import load_dotenv
+load_dotenv()  # 加载 .env 文件到环境变量
+
 from flask import Flask
 from flask_cors import CORS
 

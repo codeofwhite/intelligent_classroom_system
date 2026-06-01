@@ -14,7 +14,7 @@ dashscope.api_key = os.getenv("DASHSCOPE_API_KEY", "")
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
+    "password": os.getenv("DB_PASSWORD", "password123"),
     "database": os.getenv("DB_NAME", "user_center_db"),
     "charset": "utf8mb4"
 }
@@ -22,7 +22,7 @@ DB_CONFIG = {
 MINIO_CLIENT = Minio(
     os.getenv("MINIO_ENDPOINT", "localhost:9000"),
     access_key=os.getenv("MINIO_ACCESS_KEY", "admin"),
-    secret_key=os.getenv("MINIO_SECRET_KEY", ""),
+    secret_key=os.getenv("MINIO_SECRET_KEY", "password123"),
     secure=False
 )
 BUCKET_NAME = "video-bucket"
@@ -821,7 +821,7 @@ def chat_agent_api(question: str, teacher_code: str, session_id: str):
             {"role": "user", "content": question}
         ]
 
-        max_round = 5
+        max_round = 8
         current_round = 0
         answer = ""
         ai_msg = None

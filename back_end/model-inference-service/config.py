@@ -29,7 +29,7 @@ MODEL_CONFIGS = {
 DB_CONFIG = {
     "host": os.getenv("DB_HOST", "localhost"),
     "user": os.getenv("DB_USER", "root"),
-    "password": os.getenv("DB_PASSWORD", ""),
+    "password": os.getenv("DB_PASSWORD", "password123"),
     "database": os.getenv("DB_NAME", "user_center_db"),
     "charset": "utf8mb4"
 }
@@ -37,9 +37,9 @@ DB_CONFIG = {
 # ========================
 # MinIO 配置
 # ========================
-MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "minio:9000")
+MINIO_ENDPOINT = os.getenv("MINIO_ENDPOINT", "localhost:9000")
 MINIO_ACCESS_KEY = os.getenv("MINIO_ACCESS_KEY", "admin")
-MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "")
+MINIO_SECRET_KEY = os.getenv("MINIO_SECRET_KEY", "password123")
 BUCKET_NAME = "video-bucket"
 
 # ========================
@@ -53,7 +53,7 @@ KEY_FRAME_SAVE_DIR = "key_frames"
 # ========================
 # 视频源
 # ========================
-VIDEO_SOURCE = "http://192.168.26.157:8080/video"
+VIDEO_SOURCE = "http://10.231.34.6:8080/video"
 
 # ========================
 # 关键帧 / 统计参数
