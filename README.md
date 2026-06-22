@@ -2,7 +2,9 @@
 
 基于计算机视觉的智能课堂行为分析系统，通过 YOLO 目标检测 + 多目标跟踪 + 大模型 Agent，实现课堂专注度实时监测、行为分析、人脸签到和智能报告生成。
 
-<div align="center"> <!-- 第一组左右并排 --> <div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;"> <img width="48%" alt="系统总览界面" src="https://github.com/user-attachments/assets/518f9b2b-f7ac-4308-b457-a31e5f7e970a" /> <img width="48%" alt="课堂实时监测页面" src="https://github.com/user-attachments/assets/78c8856c-97b2-4c9c-8de1-88bd51ff8fe9" /> </div> <br/><div style="display: flex; gap: 16px; justify-content: center; flex-wrap: wrap;"> <img width="48%" alt="课堂数据统计报表" src="https://github.com/user-attachments/assets/b8a76643-9b2d-44b7-8a08-078d0674e6fc" /> <img width="48%" alt="AI智能对话助手" src="https://github.com/user-attachments/assets/cbb07741-7d6a-4b9a-ac6c-f3f26cd8a92d" /> </div> <br/><img width="40%" alt="移动端家长端页面" src="https://github.com/user-attachments/assets/2e60feec-d721-46e8-9b72-e09d2566115e" /> </div>
+<div align="center"> <!-- 第一组左右并排 --> <table width="100%" border="0"> <tr> <td width="50%" align="center"> <img width="95%" alt="系统总览界面" src="https://github.com/user-attachments/assets/518f9b2b-f7ac-4308-b457-a31e5f7e970a" /> <p>系统总览界面</p> </td> <td width="50%" align="center"> <img width="95%" alt="课堂实时监测页面" src="https://github.com/user-attachments/assets/78c8856c-97b2-4c9c-8de1-88bd51ff8fe9" /> <p>课堂实时监测页面</p> </td> </tr> </table>
+<table width="100%" border="0"> <tr> <td width="50%" align="center"> <img width="95%" alt="课堂数据统计报表" src="https://github.com/user-attachments/assets/b8a76643-9b2d-44b7-8a08-078d0674e6fc" /> <p>课堂数据统计报表</p> </td> <td width="50%" align="center"> <img width="95%" alt="移动端家长端页面" src="https://github.com/user-attachments/assets/2e60feec-d721-46e8-9b72-e09d2566115e" /> <p>移动端家长端页面</p> </td> </tr> </table>
+<img width="70%" alt="AI智能对话助手" src="https://github.com/user-attachments/assets/cbb07741-7d6a-4b9a-ac6c-f3f26cd8a92d" /> <p>AI智能对话助手</p> </div>
 
 ## 项目结构
 
